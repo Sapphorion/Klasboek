@@ -21,35 +21,63 @@ export function aiUnavailableReason() {
 async function call({ system, content, tool, maxTokens = 8000 }) {
   const reason = aiUnavailableReason();
   if (reason) throw new Error(reason);
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': state.settings.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: state.settings.model || MODELS[0].id,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content }],
-      tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }],
-      tool_choice: { type: 'tool', name: tool.name },
-    }),
-  });
+  // Newer models don't accept a forced tool_choice, so the tool is offered with "auto"
+  // and the system prompt tells Claude to answer through it. One retry if it doesn't.
+  const sys = `${system}\n\nAlways answer by calling the ${tool.name} tool exactly once with the complete result. Do not write any other text.`;
+  const messages = [{ role: 'user', content }];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const j = await post({ system: sys, messages, tool, maxTokens });
+    const block = j.content?.find(b => b.type === 'tool_use' && b.name === tool.name);
+    if (j.stop_reason === 'max_tokens') throw new Error('The response was too long and got cut off. Try again, or pick a bigger model in Settings.');
+    if (block) return block.input;
+    const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const parsed = jsonFrom(text);
+    if (parsed) return parsed;
+    messages.push({ role: 'assistant', content: j.content?.length ? j.content : [{ type: 'text', text: '…' }] },
+      { role: 'user', content: `Please give the result by calling the ${tool.name} tool now.` });
+  }
+  throw new Error('Claude did not return structured content. Try again.');
+}
+
+async function post({ system, messages, tool, maxTokens }) {
+  let res;
+  try {
+    res = await fetch(API, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': state.settings.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: state.settings.model || MODELS[0].id,
+        max_tokens: maxTokens,
+        system,
+        messages,
+        tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }],
+        tool_choice: { type: 'auto' },
+      }),
+    });
+  } catch {
+    throw new Error('Could not reach Claude. Check your internet connection.');
+  }
   if (!res.ok) {
     let msg = `Claude API error ${res.status}`;
     try { const j = await res.json(); msg = j.error?.message || msg; } catch {}
     if (res.status === 401) msg = 'Your API key was rejected. Check it in Settings.';
+    if (res.status === 402 || /credit balance/i.test(msg)) msg = 'Your Claude account has no credit left. Top up under Billing at platform.claude.com.';
     if (res.status === 429) msg = 'Rate limit reached. Wait a minute and try again.';
+    if (res.status === 529 || res.status === 503) msg = 'Claude is busy right now. Try again in a minute.';
     throw new Error(msg);
   }
-  const j = await res.json();
-  const block = j.content?.find(b => b.type === 'tool_use');
-  if (!block) throw new Error('Claude did not return structured content. Try again.');
-  if (j.stop_reason === 'max_tokens') throw new Error('The response was too long and got cut off. Try a shorter section or a bigger model.');
-  return block.input;
+  return res.json();
+}
+
+function jsonFrom(text) {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
 }
 
 export async function testKey() {
