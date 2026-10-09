@@ -1,0 +1,15 @@
+{
+  "name": "Klasboek – lesson planner",
+  "short_name": "Klasboek",
+  "description": "Plan lessons from your ATP and timetable, make lesson plans, worksheets and slides, and run moderation. Works offline.",
+  "start_url": "./#planner",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBFCF8",
+  "theme_color": "#1E3B33",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
