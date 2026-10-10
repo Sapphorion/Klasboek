@@ -7,9 +7,10 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 - **Subjects & ATPs**: upload a DBE ATP (PDF, Word or Excel). It is read on the device and shown for checking before saving. Complicated tables can be re-read with AI.
 - **Timetable**: import from Excel/Word, read a photo with AI, or fill the grid by hand. Supports one-week timetables and two-week cycles (Week A / Week B), including Day 1–10 layouts. The cycle can restart every term or carry on across terms, and a tap on the planner's Week badge swaps A and B if the school is out of step.
 - **School calendar**: upload the school's year planner and test or exam timetables (PDF, Word, Excel, or a photo read by AI). Dates are read on the device and shown for checking first; in a whole-school exam timetable only papers for your subjects are ticked. Public holidays and days marked "no teaching" are blocked off in the planner and skipped by auto-plan. Tests and exams show on your lessons, in a "Coming up" strip, on the weekly plan, and AI-written lessons before a test include revision. Month and list views; add or edit events by hand.
-- **Planner**: week view of your periods. Drag ATP topics onto periods (mouse, touch or pen), or tap a topic then tap a period. *Auto-plan week* fills your timetable from that week's ATP topics, per class.
+- **Planner**: week view of your periods, with a picker for any week of any term. *Upload term plan* reads a department or personal term planner (by week numbers or by dates) into that term's weekly topics for a subject, leaving the other terms' ATP alone. *Timetable changes* handles a week that starts on a different timetable day (just that week, or from then on, skipping holidays and no-school days, so Day 1–10 cycles stay in step), single days that follow another day's timetable, and period swaps (planned lessons move with them). Tap + on a day to add a note or reminder. Drag ATP topics onto periods (mouse, touch or pen), or tap a topic then tap a period. *Auto-plan week* fills your timetable from that week's ATP topics, per class.
 - **Lessons**: one click builds a lesson plan, slides and worksheet + memo, either written by Claude (online) or as a structured template from the ATP (offline). Everything is editable, then exports to Word (.docx), PowerPoint (.pptx) or print/PDF, with your school name, logo and colour.
-- **Moderation**: upload a marksheet, pick the name and mark columns, and it selects a sample spread across the 7 CAPS levels, always including the highest, lowest and pass/fail borderline learners. Enter moderator marks to see variance against your tolerance, complete the script and teacher-file checklists, and export a moderation report.
+- **Moderation notices**: upload the notice or circular (PDF, Word or photo) and the due date, level, subject and list of what to hand in are filled in. Tick items off, add notes, link the marksheet moderation, and get reminders on the planner (2 weeks / 1 week / 3 days / 1 day before) plus a warning banner in the last week. *Add to my phone calendar* downloads an .ics file with real alarms for the tablet's calendar.
+- **Marksheet moderation**: upload a marksheet, pick the name and mark columns, and it selects a sample spread across the 7 CAPS levels, always including the highest, lowest and pass/fail borderline learners. Enter moderator marks to see variance against your tolerance, complete the script and teacher-file checklists, and export a moderation report.
 - **Materials**: a library of your own files, attachable to lessons.
 - **Backup**: everything lives in the browser on that device. Download a backup from Settings regularly.
 
@@ -42,7 +43,6 @@ The app is built so these can be added without a rewrite:
 
 ## Known limits
 
-- Day cycles that skip public holidays (where Day 4 moves to the next school day) aren't supported; the cycle follows calendar weeks.
 - Scanned (image-only) PDFs can't be read offline; use "Read with AI" or a Word/Excel version.
 - Template lessons are a structured starting point; AI-written lessons should still be checked before class.
 
@@ -54,6 +54,7 @@ js/app.js              navigation and start-up
 js/state.js, db.js     data and local storage
 js/importers.js        reading ATPs, timetables, marksheets, year planners, exam timetables
 js/events.js           school calendar helpers
+js/ttday.js            which timetable day a date follows, period swaps
 js/generate.js         lesson content (template + AI)
 js/ai.js               all Claude API calls
 js/exporters.js        Word, PowerPoint, print

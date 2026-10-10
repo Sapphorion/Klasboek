@@ -62,7 +62,7 @@ function view() {
   const restoreIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: async () => {
     const f = restoreIn.files[0]; if (!f) return;
     if (!await confirmBox('Restoring replaces everything in Klasboek on this device with the backup.', 'Restore backup')) return;
-    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
+    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
     catch (e) { toast(e.message, 'error'); }
   } });
   const backupBtn = h('button', { class: 'btn' }, icon('download'), 'Download backup');

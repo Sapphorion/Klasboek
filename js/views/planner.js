@@ -4,8 +4,12 @@ import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
-import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel } from '../events.js';
-import { editEvent } from './calendar.js';
+import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel, noticesDueSoon } from '../events.js';
+import { editEvent, openEvent } from './calendar.js';
+import { dueText } from './notices.js';
+import { openTermPlanUpload } from './termplan.js';
+import { ttCellAt, ttDayFor, posLabel, changedOn, swapsOn } from '../ttday.js';
+import { openTtChanges } from './ttchanges.js';
 
 let weekStart = mondayOf(today());
 let trayScope = 'week';      // 'week' | 'term'
@@ -15,7 +19,7 @@ let picked = null;           // tap-to-place: { atpId } or { lessonId }
 let rootEl = null;
 export function renderPlanner(root) {
   rootEl = root;
-  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events'].includes(w)) rerender(); });
+  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events', 'notices'].includes(w)) rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
 }
@@ -46,11 +50,13 @@ function view() {
     ),
     h('div', { class: 'row' },
       h('button', { class: 'btn', onclick: autoPlan, title: 'Place this week’s ATP topics into your timetable slots' }, icon('wand'), 'Auto-plan week'),
+      h('button', { class: 'btn ghost', onclick: () => openTtChanges(weekStart) }, icon('swap'), 'Timetable changes'),
+      h('button', { class: 'btn ghost', onclick: () => openTermPlanUpload(tw?.term) }, icon('upload'), 'Upload term plan'),
       h('button', { class: 'btn ghost', onclick: () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error')) }, icon('download'), 'Week plan (.docx)'),
     ),
   ));
 
-  wrap.append(comingUp());
+  wrap.append(noticeBanner(), comingUp());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
@@ -60,7 +66,16 @@ function view() {
     const isToday = d.date === today();
     const evs = eventsOn(d.date);
     grid.append(h('div', { class: 'day-head' + (isToday ? ' today' : ''), role: 'columnheader' }, h('strong', {}, d.label), h('span', {}, fmt(d.date)),
-      evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => editEvent(e) }, h('span', {}, e.title))),
+      (() => {
+        const pos = ttDayFor(d.date);
+        const changed = changedOn(d.date);
+        if (!pos || (!changed && (state.timetable.cycle || 1) < 2)) return null;
+        const sw = swapsOn(d.date).length;
+        return h('button', { class: 'tt-day-label' + (changed ? ' changed' : ''), title: 'Timetable changes', onclick: () => openTtChanges(weekStart) },
+          (changed && pos.source ? 'Follows ' : '') + posLabel(pos) + (sw ? ` · ${sw} swap${sw > 1 ? 's' : ''}` : ''));
+      })(),
+      h('button', { class: 'add-note', title: 'Add a note or reminder', 'aria-label': `Add a note or reminder on ${d.label} ${fmt(d.date)}`, onclick: () => editEvent({ date: d.date, type: 'reminder' }) }, icon('plus', 14)),
+      evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => openEvent(e) }, h('span', {}, e.title))),
         evs.length > 3 ? h('a', { class: 'more', href: '#calendar/' + d.date }, `+${evs.length - 3}`) : null) : null));
   }
   for (const p of state.timetable.periods) {
@@ -80,18 +95,28 @@ function rerender() {
   const g = rootEl.querySelector('.grid-scroll'); if (g) g.scrollLeft = sc;
 }
 
+function noticeBanner() {
+  const due = noticesDueSoon(7);
+  if (!due.length) return h('span');
+  return h('div', { class: 'notice-banner', role: 'status' }, icon('flag', 18),
+    h('div', {}, due.slice(0, 3).map(n => {
+      const it = n.items || []; const ready = it.filter(i => i.done).length;
+      return h('a', { href: '#moderation/notice/' + n.id }, h('strong', {}, n.title), ` · ${dueText(n)}${it.length ? ` · ${ready} of ${it.length} ready` : ''}`);
+    })));
+}
+
 function comingUp() {
   const list = upcoming({ from: today(), days: 21, limit: 5 });
   if (!list.length) return h('span');
   const rel = date => { const n = Math.round((new Date(date) - new Date(today())) / 864e5); return n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 ? fmt(date, { weekday: 'short' }) : fmt(date); };
   return h('div', { class: 'coming-up', 'aria-label': 'Coming up' }, h('strong', {}, 'Coming up'),
-    list.map(e => h('a', { class: 'ev-chip', href: '#calendar/' + e.date, style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label },
+    list.map(e => h('a', { class: 'ev-chip', href: e.notice ? '#moderation/notice/' + e.notice : '#calendar/' + e.date, style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label },
       h('span', { class: 'when' }, rel(e.date < today() ? today() : e.date)), h('span', {}, e.title))));
 }
 
 function cycleBadge(tw) {
   if ((state.timetable.cycle || 1) < 2 || !tw) return null;
-  const w = cycleWeekOf(addDays(weekStart, 1));
+  const w = (ttDayFor(addDays(weekStart, 1)) || ttDayFor(weekStart) || { week: cycleWeekOf(addDays(weekStart, 1)) }).week;
   const other = cycleLetter(3 - w);
   return h('button', {
     class: 'cycle-badge', 'data-week': cycleLetter(w), title: `Tap if this should be Week ${other}`,
@@ -104,14 +129,24 @@ function cycleBadge(tw) {
 }
 
 function termJump(tw) {
-  const sel = h('select', { class: 'sm', 'aria-label': 'Jump to term', onchange: () => { const m = mondayOfTermWeek(+sel.value, 1); if (m) { weekStart = m; rerender(); } } },
-    h('option', { value: '' }, 'Jump to…'), [1, 2, 3, 4].map(t => h('option', { value: t }, `Term ${t}`)));
+  // Every school week of the year, grouped by term, so any week is one tap away.
+  const sel = h('select', { class: 'sm week-pick', 'aria-label': 'Choose a week', onchange: () => { if (sel.value) { weekStart = sel.value; rerender(); } } });
+  if (!tw) sel.append(h('option', { value: '', selected: true }, 'Holiday · choose a week'));
+  [1, 2, 3, 4].forEach(t => {
+    const n = termWeeks(t);
+    if (!n) return;
+    sel.append(h('optgroup', { label: `Term ${t}` }, Array.from({ length: n }, (_, i) => {
+      const mon = mondayOfTermWeek(t, i + 1);
+      const isNow = mon === mondayOf(today());
+      return h('option', { value: mon, selected: mon === weekStart }, `Term ${t}, week ${i + 1} · ${fmt(mon)}–${fmt(addDays(mon, 4))}${isNow ? ' (this week)' : ''}`);
+    })));
+  });
   return sel;
 }
 
 function slot(d, p) {
   const closed = noTeachingOn(d.date);
-  const ttCell = closed ? null : cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
+  const ttCell = closed ? null : ttCellAt(d.date, p.id);
   const ttSubj = ttCell && subjectById(ttCell.subjectId);
   const lessons = state.lessons.filter(l => l.date === d.date && l.periodId === p.id);
   const school = inTerm(d.date);
@@ -261,7 +296,7 @@ async function placePicked(date, periodId) {
 
 async function dropOnSlot(payload, date, periodId) {
   const existing = state.lessons.find(l => l.date === date && l.periodId === periodId);
-  const tt = cellsFor(cycleWeekOf(date))[cellKey(dayIdxOf(date), periodId)];
+  const tt = ttCellAt(date, periodId);
   if (payload.atpId) {
     const a = atpById(payload.atpId);
     if (existing) {
@@ -301,7 +336,7 @@ async function autoPlan() {
   for (const d of days) {
     if (!inTerm(d.date) || noTeachingOn(d.date)) continue;
     for (const p of state.timetable.periods) {
-      const tt = cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
+      const tt = ttCellAt(d.date, p.id);
       if (!tt?.subjectId) continue;
       if (state.lessons.some(l => l.date === d.date && l.periodId === p.id)) continue;
       const k = `${tt.subjectId}|${tt.cls || ''}`;

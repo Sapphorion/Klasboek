@@ -6,6 +6,7 @@ import { uid } from '../db.js';
 import { readTimetableFile, matchSubject, kindOf } from '../importers.js';
 import { aiReadTimetable, aiReady, aiUnavailableReason } from '../ai.js';
 import { cycleWeekOf, cycleLetter, today, mondayOf, addDays } from '../dates.js';
+import { changesList } from './ttchanges.js';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 let editWeek = 1; // which week of the cycle the grid is showing
@@ -79,6 +80,7 @@ function view() {
       if (await confirmBox(`Clear every slot${two ? ` in Week ${cycleLetter(editWeek)}` : ''}? Periods stay.`, 'Clear slots')) saveTimetable({ [mapKey(editWeek)]: {} });
     } }, two ? `Clear Week ${cycleLetter(editWeek)}` : 'Clear slots') : null,
   ));
+  page.append(changesList());
   if (tt.image) page.append(h('figure', { class: 'tt-photo' }, h('img', { src: tt.image, alt: 'Photo of your printed timetable' }), h('figcaption', { class: 'row between' }, 'Your timetable photo, for reference.', h('button', { class: 'btn ghost sm', onclick: () => saveTimetable({ image: '' }) }, 'Remove photo'))));
   if (!state.subjects.length) page.append(h('p', { class: 'warn' }, 'Add your subjects first so you can choose them in the grid. ', h('a', { href: '#subjects' }, 'Add subjects')));
   return page;

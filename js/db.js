@@ -2,8 +2,8 @@
 // Kept behind a small API so it can later be swapped for a synced backend (accounts, cloud).
 
 const DB_NAME = 'klasboek';
-const DB_VERSION = 3;
-const STORES = ['kv', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events'];
+const DB_VERSION = 4;
+const STORES = ['kv', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices'];
 
 let dbp = null;
 function open() {

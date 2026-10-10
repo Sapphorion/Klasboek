@@ -49,6 +49,7 @@ export const state = {
   lessons: [],   // { id, date, periodId, subjectId, atpId, title, cls, notes, content, materialIds, done }
   materials: [], // { id, name, type, size, blob, subjectId, lessonId, added }
   events: [],      // { id, date, endDate, title, type, time, subjectId, grade, cls, notes, noTeaching, source }
+  notices: [],     // moderation notices: { id, title, level, subjectId, grade, due, remind:[days], items:[{text,done}], notes, fileId, moderationId, submitted, submittedOn, created }
   moderations: [], // { id, title, subjectId, cls, task, total, learners:[{name, mark, modMark, sampled, reason}], checks:{}, fileChecks:{}, ... }
 };
 
@@ -65,6 +66,7 @@ export async function loadState() {
   state.materials = await db.all('materials');
   state.moderations = await db.all('moderations');
   state.events = await db.all('events');
+  state.notices = await db.all('notices');
 }
 
 export const atpSort = (a, b) => a.subjectId.localeCompare(b.subjectId) || a.term - b.term || a.week - b.week || (a.order || 0) - (b.order || 0);
@@ -113,6 +115,15 @@ export async function replaceAtp(subjectId, items) {
   const rows = items.map((it, i) => ({ id: it.id || uid('a_'), subjectId, order: i, ...it, subjectId }));
   await db.putMany('atp', rows);
   state.atp = state.atp.filter(a => a.subjectId !== subjectId).concat(rows).sort(atpSort);
+  emit('atp');
+}
+// Replace one term of a subject's plan (from a term planner), leaving the other terms alone.
+export async function replaceAtpTerm(subjectId, term, items) {
+  const old = state.atp.filter(a => a.subjectId === subjectId && a.term === term).map(a => a.id);
+  await db.delMany('atp', old);
+  const rows = items.map((it, i) => ({ id: uid('a_'), order: i, ...it, term, subjectId, source: 'term plan' }));
+  await db.putMany('atp', rows);
+  state.atp = state.atp.filter(a => !(a.subjectId === subjectId && a.term === term)).concat(rows).sort(atpSort);
   emit('atp');
 }
 export async function saveAtpItem(item) {
@@ -200,4 +211,18 @@ export async function deleteEvents(ids) {
   const set = new Set(ids);
   state.events = state.events.filter(e => !set.has(e.id));
   await db.delMany('events', ids); emit('events');
+}
+
+// ---------- Moderation notices ----------
+export const noticeById = id => state.notices.find(n => n.id === id);
+export async function saveNotice(n, { silent = false } = {}) {
+  if (!n.id) { n.id = uid('n_'); n.created = new Date().toISOString(); }
+  const i = state.notices.findIndex(x => x.id === n.id);
+  if (i < 0) state.notices.push(n); else state.notices[i] = n;
+  await db.put('notices', n); if (!silent) emit('notices');
+  return n;
+}
+export async function deleteNotice(id) {
+  state.notices = state.notices.filter(n => n.id !== id);
+  await db.del('notices', id); emit('notices');
 }

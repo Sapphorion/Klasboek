@@ -243,3 +243,28 @@ export async function aiReadCalendar({ text, image, pdf }, kind, year) {
     title: e.title || '', type: e.type || 'event', time: e.time || '', grade: e.grade || '', subject: e.subject || '', noTeaching: !!e.noTeaching || e.type === 'holiday',
   }));
 }
+
+// ---------- Moderation notice ----------
+export async function aiReadNotice({ text, image, pdf }, year) {
+  const intro = `This is a moderation notice or circular sent to a South African teacher. Today is in ${year}. Extract what the teacher must do: a short title, the moderation level, subject and grade if given, the due date (when the work must be submitted or moderation happens), the list of items to submit or prepare, and any other notes (venue, who to give it to, format).`;
+  const content = image
+    ? [{ type: 'image', source: { type: 'base64', media_type: image.split(';')[0].slice(5), data: image.split(',')[1] } }, { type: 'text', text: intro }]
+    : pdf ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } }, { type: 'text', text: intro }]
+    : `${intro}\n\n---\n${String(text).slice(0, 60000)}`;
+  const r = await call({
+    system: 'You extract tasks and deadlines from school notices accurately. Only report what the notice says.',
+    content,
+    tool: { name: 'save_notice', description: 'Save the moderation notice', schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' }, level: { type: 'string', enum: ['School', 'Cluster', 'District', 'Provincial', ''] },
+        subject: { type: 'string' }, grade: { type: 'string' }, due: { type: 'string', description: 'YYYY-MM-DD or empty' },
+        items: { type: 'array', items: { type: 'string' }, description: 'Things to submit or prepare, one per item' },
+        notes: { type: 'string' },
+      },
+      required: ['title', 'items'],
+    } },
+    maxTokens: 4000,
+  });
+  return { title: r.title || '', level: r.level || '', subject: r.subject || '', grade: r.grade || '', due: /^\d{4}-\d{2}-\d{2}$/.test(r.due || '') ? r.due : '', items: r.items || [], notes: r.notes || '' };
+}

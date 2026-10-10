@@ -9,13 +9,31 @@ export const EVENT_TYPES = [
   { id: 'holiday', label: 'Holiday or no school', colour: '#2E7D4F' },
   { id: 'meeting', label: 'Meeting', colour: '#8E44AD' },
   { id: 'event', label: 'School event', colour: '#1E3B33' },
+  { id: 'reminder', label: 'Reminder or note', colour: '#B8336A' },
 ];
 export const typeOf = id => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES.at(-1);
 const order = id => EVENT_TYPES.findIndex(t => t.id === id);
 export const byDateThenType = (a, b) => a.date.localeCompare(b.date) || order(a.type) - order(b.type) || (a.time || '').localeCompare(b.time || '');
 
 export const covers = (e, date) => e.date <= date && (e.endDate || e.date) >= date;
-export const eventsOn = date => state.events.filter(e => covers(e, date)).sort(byDateThenType);
+
+// Open moderation notices show on the calendar and planner: on the due date and on each reminder day.
+export function noticeEvents() {
+  const out = [];
+  for (const n of state.notices || []) {
+    if (!n.due || n.submitted) continue;
+    const items = n.items || [];
+    const ready = items.filter(i => i.done).length;
+    out.push({ id: 'notice-due-' + n.id, notice: n.id, date: n.due, type: 'deadline', title: `Moderation due: ${n.title}`, time: '', notes: items.length ? `${ready} of ${items.length} items ready` : '' });
+    for (const d of n.remind || []) {
+      if (!d) continue;
+      out.push({ id: `notice-rem-${n.id}-${d}`, notice: n.id, date: addDays(n.due, -d), type: 'reminder', title: `Reminder: ${n.title} due in ${d} day${d > 1 ? 's' : ''}`, time: '' });
+    }
+  }
+  return out;
+}
+export const allEvents = () => state.events.concat(noticeEvents());
+export const eventsOn = date => allEvents().filter(e => covers(e, date)).sort(byDateThenType);
 export const noTeachingOn = date => state.events.some(e => e.noTeaching && covers(e, date));
 export const isSchoolDay = date => inTerm(date) && !noTeachingOn(date);
 
@@ -25,7 +43,8 @@ export const isAssessment = e => e.type === 'test' || e.type === 'exam';
 
 export function upcoming({ from = today(), days = 21, limit = 6 } = {}) {
   const until = addDays(from, days);
-  return state.events
+  return allEvents()
+    .filter(e => !(e.notice && e.type === 'reminder') || e.date === from)
     .filter(e => (e.endDate || e.date) >= from && e.date <= until)
     .filter(e => !isAssessment(e) || isMine(e) || !e.subjectId)
     .sort(byDateThenType).slice(0, limit);
@@ -42,4 +61,10 @@ export function nextAssessment(subjectId, from, days = 21) {
 
 export function eventLabel(e) {
   return [e.time, e.title].filter(Boolean).join(' ');
+}
+
+// Notices due within `days` (or overdue) that aren't submitted yet.
+export function noticesDueSoon(days = 7) {
+  const until = addDays(today(), days);
+  return (state.notices || []).filter(n => !n.submitted && n.due && n.due <= until).sort((a, b) => a.due.localeCompare(b.due));
 }

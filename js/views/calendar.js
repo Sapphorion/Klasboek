@@ -4,7 +4,7 @@ import { h, icon, toast, modal, confirmBox, dropZone, busy } from '../ui.js';
 import { readCalendarFile, matchSubject, kindOf } from '../importers.js';
 import { aiReadCalendar, aiReady, aiUnavailableReason } from '../ai.js';
 import { today, parse, iso, addDays, mondayOf, fmt, fmtLong, inTerm } from '../dates.js';
-import { EVENT_TYPES, typeOf, eventsOn, noTeachingOn, byDateThenType, eventLabel } from '../events.js';
+import { EVENT_TYPES, typeOf, eventsOn, noTeachingOn, byDateThenType, eventLabel, allEvents } from '../events.js';
 import { shrinkImage } from './timetable.js';
 
 let month = today().slice(0, 7); // 'YYYY-MM'
@@ -15,7 +15,7 @@ const hidden = new Set(); // event types filtered out
 export function renderCalendar(root, [date]) {
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) { selected = date; month = date.slice(0, 7); }
   const draw = () => root.replaceChildren(view());
-  const off = onChange(w => { if (['events', 'subjects', 'settings'].includes(w)) draw(); });
+  const off = onChange(w => { if (['events', 'subjects', 'settings', 'notices'].includes(w)) draw(); });
   draw();
   return off;
 }
@@ -81,7 +81,7 @@ function monthGrid(y, m) {
     },
       h('span', { class: 'cal-num' }, String(parse(d).getDate())),
       h('div', { class: 'cal-pills' },
-        evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: ev => { ev.stopPropagation(); editEvent(e); } }, h('span', {}, e.title))),
+        evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: ev => { ev.stopPropagation(); openEvent(e); } }, h('span', {}, e.title))),
         evs.length > 3 ? h('span', { class: 'more' }, `+${evs.length - 3}`) : null));
     const pick = () => { selected = d; if (d.slice(0, 7) !== month) month = d.slice(0, 7); rerender(); };
     cell.addEventListener('click', pick);
@@ -104,15 +104,15 @@ function dayPanel() {
 
 function eventRow(e) {
   const t = typeOf(e.type); const s = subjectById(e.subjectId);
-  return h('li', {}, h('button', { class: 'ev-row', style: { '--c': t.colour }, onclick: () => editEvent(e) },
+  return h('li', {}, h('button', { class: 'ev-row', style: { '--c': t.colour }, onclick: () => openEvent(e) },
     h('span', { class: 'ev-type' }, t.label),
     h('strong', {}, e.title),
-    h('span', { class: 'muted small' }, [e.endDate ? `${fmt(e.date)} – ${fmt(e.endDate)}` : '', e.time, s ? subjectLabel(s) : (e.grade ? 'Grade ' + e.grade : ''), e.noTeaching ? 'no teaching' : ''].filter(Boolean).join(' · '))));
+    h('span', { class: 'muted small' }, [e.endDate ? `${fmt(e.date)} – ${fmt(e.endDate)}` : '', e.time, s ? subjectLabel(s) : (e.grade ? 'Grade ' + e.grade : ''), e.noTeaching ? 'no teaching' : '', e.notice ? e.notes : ''].filter(Boolean).join(' · '))));
 }
 
 function listView() {
   const from = `${month}-01`;
-  const evs = visible(state.events.filter(e => (e.endDate || e.date) >= from)).sort(byDateThenType);
+  const evs = visible(allEvents().filter(e => (e.endDate || e.date) >= from)).sort(byDateThenType);
   if (!evs.length) return h('p', { class: 'empty' }, state.events.length ? 'No events from this month on. Go back a month, or switch filters on.' : 'No events yet. Upload your year planner or add an event.');
   const groups = new Map();
   for (const e of evs) { const k = e.date.slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
@@ -250,5 +250,11 @@ function reviewImport(file, kind, res) {
 }
 
 const toBase64 = file => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1]); fr.readAsDataURL(file); });
+
+// Notices open their own page; other events open the editor.
+export function openEvent(e) {
+  if (e.notice) { document.querySelector('dialog.modal')?.close(); location.hash = 'moderation/notice/' + e.notice; return; }
+  editEvent(e);
+}
 
 export { editEvent };

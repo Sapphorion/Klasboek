@@ -1,5 +1,5 @@
 // Subjects and their Annual Teaching Plans.
-import { state, onChange, upsertSubject, deleteSubject, replaceAtp, saveAtpItem, deleteAtpItem, subjectLabel, SUBJECT_COLOURS } from '../state.js';
+import { state, onChange, upsertSubject, deleteSubject, replaceAtp, replaceAtpTerm, saveAtpItem, deleteAtpItem, subjectLabel, SUBJECT_COLOURS } from '../state.js';
 import { h, icon, toast, busy, confirmBox, dropZone, modal } from '../ui.js';
 import { uid } from '../db.js';
 import { readAtpFile } from '../importers.js';
@@ -124,17 +124,18 @@ function aiButton(s) {
 }
 
 // Show what was found before saving, so the teacher can fix it.
-function reviewDialog(s, items, source, text) {
+export function reviewDialog(s, items, source, text, opts = {}) {
+  const fix = opts.normalize || (x => x);
   items = items.map(i => ({ ...i, weekEnd: i.weekEnd || i.week }));
   const terms = [...new Set(items.map(i => i.term))];
   const body = h('div', {});
-  const m = modal(`Check the ATP: ${s.name}`, body, { wide: true });
+  const m = modal(opts.term ? `Check the term plan: ${subjectLabel(s)}, term ${opts.term}` : `Check the ATP: ${s.name}`, body, { wide: true });
   const draw = () => body.replaceChildren(
     items.length
       ? h('p', {}, `Found ${items.length} weekly topics across term${terms.length > 1 ? 's' : ''} ${terms.join(', ')} in `, h('strong', {}, source), '. Fix anything that looks wrong, then save.')
       : h('p', { class: 'error' }, 'No week-by-week topics were found. ', aiReady() ? 'Try reading it with AI, or add rows by hand.' : 'Add rows by hand, or connect AI in Settings to read complex tables.'),
     h('div', { class: 'row wrap' },
-      aiReady() && !source.startsWith('AI') ? (() => { const b = h('button', { class: 'btn ghost sm' }, icon('spark', 16), 'Read with AI instead'); b.onclick = async () => { const done = busy(b, 'Reading…'); try { items = (await aiParseAtp(text, s)).map(i => ({ ...i, weekEnd: i.weekEnd || i.week })); source = 'AI reading'; draw(); } catch (e) { toast(e.message, 'error'); } finally { done(); } }; return b; })() : null,
+      aiReady() && !source.startsWith('AI') ? (() => { const b = h('button', { class: 'btn ghost sm' }, icon('spark', 16), 'Read with AI instead'); b.onclick = async () => { const done = busy(b, 'Reading…'); try { items = fix((await aiParseAtp(text, s)).map(i => ({ ...i, weekEnd: i.weekEnd || i.week }))); source = 'AI reading'; draw(); } catch (e) { toast(e.message, 'error'); } finally { done(); } }; return b; })() : null,
       h('button', { class: 'btn ghost sm', onclick: () => { items.push({ term: items.at(-1)?.term || 1, week: (items.at(-1)?.weekEnd || 0) + 1, weekEnd: (items.at(-1)?.weekEnd || 0) + 1, topic: '', details: '' }); draw(); } }, icon('plus', 16), 'Add row'),
       h('details', { class: 'raw' }, h('summary', {}, 'Show extracted text'), h('pre', {}, text.slice(0, 20000)))),
     editTable(items, draw),
@@ -142,8 +143,9 @@ function reviewDialog(s, items, source, text) {
       h('button', { class: 'btn ghost', onclick: () => m.close() }, 'Cancel'),
       h('button', { class: 'btn primary', disabled: !items.length, onclick: async () => {
         const clean = items.filter(i => i.topic || i.details).map(i => ({ term: +i.term || 1, week: +i.week || 1, weekEnd: Math.max(+i.weekEnd || +i.week, +i.week), topic: (i.topic || '').trim() || `Week ${i.week}`, details: (i.details || '').trim() }));
-        const planned = state.lessons.filter(l => state.atp.some(a => a.id === l.atpId && a.subjectId === s.id)).length;
+        const planned = state.lessons.filter(l => state.atp.some(a => a.id === l.atpId && a.subjectId === s.id && (!opts.term || a.term === opts.term))).length;
         if (planned && !await confirmBox(`${planned} planned lessons are linked to the old ATP. They will keep their titles but lose the link.`, 'Save new ATP')) return;
+        if (opts.term) { await replaceAtpTerm(s.id, opts.term, clean.map(c => ({ ...c, term: opts.term }))); m.close(); toast(`Term ${opts.term} plan saved for ${s.name}: ${clean.length} topics. Other terms are unchanged.`); return; }
         await replaceAtp(s.id, clean); m.close(); toast(`Saved ${clean.length} ATP topics for ${s.name}.`);
       } }, `Save ${items.length} topics`)),
   );

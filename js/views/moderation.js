@@ -5,19 +5,36 @@ import { readMarksheet, toNumber } from '../importers.js';
 import { selectSample, stats, variance, LEVELS, levelOf, DEFAULT_FILE_CHECKLIST, DEFAULT_SCRIPT_CHECKLIST } from '../moderation-core.js';
 import { today, fmtLong } from '../dates.js';
 import { exportModerationDocx, printModeration } from '../moderation-export.js';
+import { noticesTab, noticeDetail } from './notices.js';
+import { noticeById } from '../state.js';
 
-export function renderModeration(root, [id]) {
-  const draw = () => root.replaceChildren(id && moderationById(id) ? detail(moderationById(id)) : list());
-  const off = onChange(w => { if (['moderations', 'settings', 'subjects'].includes(w)) draw(); });
+let tab = 'notices';
+
+export function renderModeration(root, [id, sub]) {
+  if (id === 'marks' || id === 'notices') tab = id;
+  const draw = () => root.replaceChildren(
+    id === 'notice' && noticeById(sub) ? noticeDetail(noticeById(sub))
+      : id && moderationById(id) ? detail(moderationById(id))
+      : list());
+  const off = onChange(w => { if (['moderations', 'settings', 'subjects', 'notices', 'materials'].includes(w)) draw(); });
   draw();
   return off;
 }
 
 // ---------- List ----------
 function list() {
-  const s = state.settings;
+  const open = state.notices.filter(n => !n.submitted).length;
   const page = h('div', { class: 'page' }, h('header', { class: 'page-head' }, h('h1', {}, 'Moderation'),
-    h('p', { class: 'muted' }, 'Upload a marksheet for an assessment task. Klasboek picks a sample of scripts across the achievement levels, then you work through the checklists and export a moderation report.')));
+    h('p', { class: 'muted' }, 'Keep track of moderation notices and deadlines, and moderate marks: upload a marksheet, get a sample of scripts across the achievement levels, and export a moderation report.')));
+  page.append(h('div', { class: 'tabs page-tabs', role: 'tablist' },
+    h('a', { role: 'tab', href: '#moderation/notices', 'aria-selected': String(tab === 'notices') }, 'Notices and deadlines', open ? h('span', { class: 'count' }, open) : null),
+    h('a', { role: 'tab', href: '#moderation/marks', 'aria-selected': String(tab === 'marks') }, 'Marksheet moderation', state.moderations.length ? h('span', { class: 'count' }, state.moderations.length) : null)));
+  if (tab === 'notices') { page.append(noticesTab()); return page; }
+  return marksTab(page);
+}
+
+function marksTab(page) {
+  const s = state.settings;
   const status = h('div', { 'aria-live': 'polite' });
   page.append(h('div', { class: 'mod-start' },
     dropZone({ accept: '.xlsx,.xls,.csv,.docx,.pdf', label: 'Upload a marksheet', hint: 'Excel, CSV, Word table or a text PDF (e.g. an SA-SAMS export).', onFiles: async ([file]) => {
@@ -36,7 +53,7 @@ function list() {
   ));
 
   const mods = [...state.moderations].sort((a, b) => (b.created || '').localeCompare(a.created || ''));
-  page.append(h('h2', {}, 'Your moderations'));
+  page.append(h('h2', {}, 'Your marksheet moderations'));
   if (!mods.length) page.append(h('p', { class: 'empty' }, 'None yet. Upload a marksheet to start one.'));
   else page.append(h('ul', { class: 'mod-list' }, mods.map(m => {
     const v = variance(m.learners, m.total, m.tolerance);
@@ -135,14 +152,15 @@ function detail(m) {
   const page = h('div', { class: 'page mod-detail' });
 
   page.append(h('header', { class: 'page-head' },
-    h('a', { href: '#moderation', class: 'back' }, icon('left', 16), 'All moderations'),
+    h('a', { href: '#moderation/marks', class: 'back' }, icon('left', 16), 'All marksheet moderations'),
     h('div', { class: 'row between wrap' },
       h('h1', {}, m.title || 'Moderation'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn', onclick: () => exportModerationDocx(m).catch(e => toast(e.message, 'error')) }, icon('doc'), 'Report (.docx)'),
         h('button', { class: 'btn ghost', onclick: () => printModeration(m) }, icon('print'), 'Print / PDF'),
-        h('button', { class: 'btn ghost danger', onclick: async () => { if (await confirmBox('Delete this moderation?')) { await deleteModeration(m.id); location.hash = 'moderation'; } } }, icon('trash', 16)))),
+        h('button', { class: 'btn ghost danger', onclick: async () => { if (await confirmBox('Delete this moderation?')) { await deleteModeration(m.id); location.hash = 'moderation/marks'; } } }, icon('trash', 16)))),
     h('p', { class: 'muted' }, [subj ? subjectLabel(subj) : '', m.cls, `${m.level} moderation`, `Total ${m.total}`, m.source].filter(Boolean).join(' · ')),
+    ...state.notices.filter(n => n.moderationId === m.id).map(n => h('a', { class: 'linked-notice', href: '#moderation/notice/' + n.id }, icon('flag', 14), `For notice: ${n.title}${n.due ? ' · due ' + fmtLong(n.due) : ''}`)),
   ));
 
   // Stats + distribution

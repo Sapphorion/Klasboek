@@ -790,3 +790,43 @@ export async function readCalendarFile(file, kind, year) {
   if (!events.length && lines.length) events = eventsFromRows(lines, fileYear, fallback);
   return { events: dedupeEvents(events), text, year: fileYear };
 }
+
+// ---------- Moderation notices ----------
+// Pulls a title, due date, subject/grade hints and the list of what to submit out of a notice.
+export async function readNoticeFile(file, year) {
+  const k = kindOf(file);
+  if (k === 'image') { const e = new Error('Photos are read with AI.'); e.needsAi = true; throw e; }
+  let text = '';
+  if (k === 'pdf') {
+    const pages = await pdfPages(file);
+    text = pages.map(chunks => {
+      const ls = [];
+      for (const c of chunks) { const l = ls.find(l => Math.abs(l.y - c.y) < 3); if (l) l.parts.push(c); else ls.push({ y: c.y, parts: [c] }); }
+      return ls.sort((a, b) => a.y - b.y).map(l => l.parts.sort((a, b) => a.x - b.x).map(p => p.str).join(' ')).join('\n');
+    }).join('\n');
+    if (text.replace(/\s/g, '').length < 30) { const e = new Error('This PDF has no readable text (it may be a scan).'); e.needsAi = true; throw e; }
+  } else if (k === 'docx') text = (await docxTablesAndText(file)).text;
+  else if (k === 'sheet') text = (await sheetGrids(file)).map(s => gridToText(s.grid)).join('\n');
+  else if (/\.(txt|md)$/i.test(file.name)) text = await file.text();
+  else throw new Error('Upload the notice as PDF, Word, a photo, or a text file.');
+  return { ...noticeFromText(text, year), text };
+}
+
+export function noticeFromText(text, year) {
+  const lines = text.split(/\n+/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  // Due date: a date on a line about submitting, else the last date mentioned.
+  let due = '';
+  const DUE = /due|submit|submission|deadline|by\b|before|no later|hand in|inhandig|voor of op|sperdatum|moderation (?:will take place|date|on)|moderering/i;
+  for (const l of lines) { if (DUE.test(l)) { const d = findDates(l, year); if (d.length) { due = d[0].start; break; } } }
+  if (!due) { const all = findDates(text, year); if (all.length) due = all.at(-1).start; }
+  // What to submit: bulleted or numbered lines.
+  const items = [];
+  for (const l of lines) {
+    const m = l.match(/^(?:[•●▪■◦\-–*]|\(?\d{1,2}[.)]|\(?[a-z][.)])\s+(.{3,160})$/i);
+    if (m && !findDates(m[1], year).length) items.push(m[1].replace(/[.;]$/, ''));
+  }
+  const title = (lines.find(l => /moderat|moderer/i.test(l) && l.length < 120) || lines[0] || 'Moderation notice').replace(/^(re|subject|onderwerp)\s*:\s*/i, '').slice(0, 120);
+  const levelM = text.match(/\b(provincial|provinsiaal|district|distrik|cluster|kluster|school|skool)[- ]?(?:based|level|vlak)?\s+moderat/i);
+  const level = levelM ? ({ provinsiaal: 'Provincial', distrik: 'District', kluster: 'Cluster', skool: 'School' }[levelM[1].toLowerCase()] || levelM[1][0].toUpperCase() + levelM[1].slice(1).toLowerCase()) : '';
+  return { title, due, items: items.slice(0, 15), level, grade: gradeOf(text) };
+}
