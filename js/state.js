@@ -50,6 +50,7 @@ export const state = {
   materials: [], // { id, name, type, size, blob, subjectId, lessonId, added }
   events: [],      // { id, date, endDate, title, type, time, subjectId, grade, cls, notes, noTeaching, source }
   notices: [],     // moderation notices: { id, title, level, subjectId, grade, due, remind:[days], items:[{text,done}], notes, fileId, moderationId, submitted, submittedOn, created }
+  creations: [],   // materials made in Create: { id, type, title, subjectId, grade, language, design, blocks|slides|rubric|cards, meta, created, updated }
   moderations: [], // { id, title, subjectId, cls, task, total, learners:[{name, mark, modMark, sampled, reason}], checks:{}, fileChecks:{}, ... }
 };
 
@@ -67,6 +68,7 @@ export async function loadState() {
   state.moderations = await db.all('moderations');
   state.events = await db.all('events');
   state.notices = await db.all('notices');
+  state.creations = await db.all('creations');
 }
 
 export const atpSort = (a, b) => a.subjectId.localeCompare(b.subjectId) || a.term - b.term || a.week - b.week || (a.order || 0) - (b.order || 0);
@@ -225,4 +227,19 @@ export async function saveNotice(n, { silent = false } = {}) {
 export async function deleteNotice(id) {
   state.notices = state.notices.filter(n => n.id !== id);
   await db.del('notices', id); emit('notices');
+}
+
+// ---------- Created materials ----------
+export const creationById = id => state.creations.find(c => c.id === id);
+export async function saveCreation(c, { silent = true } = {}) {
+  if (!c.id) { c.id = uid('c_'); c.created = new Date().toISOString(); }
+  c.updated = new Date().toISOString();
+  const i = state.creations.findIndex(x => x.id === c.id);
+  if (i < 0) state.creations.push(c); else state.creations[i] = c;
+  await db.put('creations', c); if (!silent) emit('creations');
+  return c;
+}
+export async function deleteCreation(id) {
+  state.creations = state.creations.filter(c => c.id !== id);
+  await db.del('creations', id); emit('creations');
 }

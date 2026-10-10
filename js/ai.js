@@ -268,3 +268,74 @@ export async function aiReadNotice({ text, image, pdf }, year) {
   });
   return { title: r.title || '', level: r.level || '', subject: r.subject || '', grade: r.grade || '', due: /^\d{4}-\d{2}-\d{2}$/.test(r.due || '') ? r.due : '', items: r.items || [], notes: r.notes || '' };
 }
+
+// ---------- Create: materials ----------
+const BLOCK_ITEM = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', enum: ['heading', 'text', 'list', 'box', 'vocab', 'section', 'question', 'table', 'pagebreak', 'image'] },
+    text: { type: 'string', description: 'Heading text, paragraph text (blank line between paragraphs, **bold** allowed), box text, or section instructions' },
+    title: { type: 'string', description: 'Box title or section title (e.g. "Multiple choice")' },
+    style: { type: 'string', enum: ['key', 'info', 'warn'], description: 'Box style' },
+    items: { type: 'array', items: { type: 'string' }, description: 'Bullet list items' },
+    terms: { type: 'array', items: { type: 'object', properties: { term: { type: 'string' }, meaning: { type: 'string' } }, required: ['term', 'meaning'] }, description: 'Vocabulary rows' },
+    q: { type: 'string', description: 'Question text' },
+    marks: { type: 'integer' },
+    cog: { type: 'integer', description: 'Cognitive level 1-4 (see the level names given)' },
+    kind: { type: 'string', enum: ['open', 'mcq'] },
+    options: { type: 'array', items: { type: 'string' }, description: 'For mcq: exactly 4 options, one correct' },
+    answer: { type: 'string', description: 'Memo: the expected answer with mark allocation, e.g. "Photosynthesis ✓ (1)". For mcq give the letter and the option.' },
+    rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Table rows; first row is the header' },
+    ref: { type: 'integer', description: 'For image blocks only: keep the ref you were given' },
+  },
+  required: ['type'],
+};
+const DOC_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, time: { type: 'integer', description: 'Minutes, tests only' }, instructions: { type: 'array', items: { type: 'string' }, description: 'Cover instructions, tests only' }, blocks: { type: 'array', items: BLOCK_ITEM } }, required: ['title', 'blocks'] };
+const SLIDES_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, notes: { type: 'string', description: 'Teacher speaker notes' }, imageRef: { type: 'integer', description: 'Keep if given' } }, required: ['title', 'bullets'] } } }, required: ['title', 'slides'] };
+const RUBRIC_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, task: { type: 'string' }, levels: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, marks: { type: 'string', description: 'e.g. "4" or "7-8"' } }, required: ['label', 'marks'] } }, criteria: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, descriptors: { type: 'array', items: { type: 'string' }, description: 'One per level, same order as levels' } }, required: ['name', 'descriptors'] } } }, required: ['title', 'levels', 'criteria'] };
+const CARDS_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, cards: { type: 'array', items: { type: 'object', properties: { term: { type: 'string', description: 'One word or a short phrase' }, meaning: { type: 'string', description: 'Clear, short definition for the grade' } }, required: ['term', 'meaning'] } } }, required: ['title', 'cards'] };
+const schemaFor = type => ({ test: DOC_SCHEMA, worksheet: DOC_SCHEMA, notes: DOC_SCHEMA, slides: SLIDES_SCHEMA, rubric: RUBRIC_SCHEMA, cards: CARDS_SCHEMA }[type]);
+
+const CREATE_SYSTEM = lang => `You are an experienced South African teacher creating CAPS-aligned classroom materials. Use South African contexts, names, places and Rand amounts where examples need them. Be accurate: every memo answer must be correct. Pitch language and difficulty at the grade given. ${lang && lang !== 'English' ? `Write everything in ${lang}.` : 'Write in South African English.'}`;
+
+function brief(type, o) {
+  const lv = (o.levelNames || []).map((n, i) => `${i + 1} = ${n} (target ${o.levelTargets?.[i] ?? '?'}% of marks)`).join('; ');
+  const what = {
+    test: `A formal test${o.marks ? ` of ${o.marks} marks` : ''}${o.time ? `, ${o.time} minutes` : ''}. Use "section" blocks (each becomes QUESTION 1, QUESTION 2 …) with "question" blocks inside. Mix question types: some multiple choice (kind "mcq", 1 mark each), short and longer questions. Give every question marks, a cognitive level (cog) and a full memo answer. Spread marks across cognitive levels to match the targets: ${lv}. Also give test instructions and time.`,
+    worksheet: `A worksheet${o.count ? ` with about ${o.count} questions` : ''}${o.marks ? `, about ${o.marks} marks` : ''}. Start with a short instruction paragraph. Optional sections. Give every question marks, a cog level (${lv}) and a memo answer.`,
+    notes: `Learner notes / summary${o.length === 'short' ? ' (one page)' : o.length === 'long' ? ' (3-4 pages)' : ' (about two pages)'}: headings, clear explanations in short paragraphs, bullet lists, at least one "box" with key facts, a worked example where it fits, and a vocabulary block with the key terms.`,
+    slides: `A slide deck of about ${o.count || 10} slides: a hook, objectives, teaching slides with short bullets learners can read from the back of the class, an activity slide and a recap. Add speaker notes.`,
+    rubric: `An assessment rubric with ${o.levelsCount || 4} levels (best first) and ${o.count || 5} criteria. Descriptors must be specific and observable. Give each level a mark or mark range.`,
+    cards: `${o.count || 16} flashcards with key terms and short definitions.`,
+  }[type];
+  return `${what}
+Subject: ${o.subject || 'not specified'}
+Grade: ${o.grade || 'not specified'}
+Title or topic: ${o.topic || ''}
+${o.details ? 'ATP content to cover:\n' + o.details : ''}
+${o.sourceText ? 'Use this source material:\n---\n' + o.sourceText.slice(0, 40000) + '\n---' : ''}
+${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`;
+}
+
+export async function aiCreate(type, o) {
+  return call({
+    system: CREATE_SYSTEM(o.language),
+    content: brief(type, o),
+    tool: { name: 'save_material', description: 'Save the material', schema: schemaFor(type) },
+    maxTokens: 16000,
+  });
+}
+
+// Change an existing material by instruction ("make it easier", "add two diagram questions").
+export async function aiRevise(type, current, instruction, o) {
+  return call({
+    system: CREATE_SYSTEM(o.language) + ' You are revising an existing material. Keep everything the teacher did not ask to change. Keep image blocks / imageRef values exactly as given.',
+    content: `Subject: ${o.subject || ''}. Grade: ${o.grade || ''}.${o.levelNames ? ' Cognitive levels: ' + o.levelNames.map((n, i) => `${i + 1} = ${n}`).join('; ') + '.' : ''}
+Teacher’s request: ${instruction}
+
+Current material (JSON):
+${JSON.stringify(current).slice(0, 60000)}`,
+    tool: { name: 'save_material', description: 'Save the revised material', schema: schemaFor(type) },
+    maxTokens: 16000,
+  });
+}

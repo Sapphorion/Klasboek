@@ -22,6 +22,18 @@ function logoBytes() {
   return { type, data: u };
 }
 
+// Answer lines as a ruled table: separate bordered paragraphs get merged into one box by Word.
+export function ruledLines(D, n, { indent = 0, width = 9360 } = {}) {
+  if (!(n > 0)) return [];
+  const line = { style: D.BorderStyle.SINGLE, size: 4, color: '8C9592' };
+  const none = { style: D.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  return [new D.Table({
+    width: { size: width - indent, type: D.WidthType.DXA }, columnWidths: [width - indent], indent: { size: indent, type: D.WidthType.DXA },
+    borders: { top: none, left: none, right: none, bottom: line, insideHorizontal: line, insideVertical: none },
+    rows: Array.from({ length: n }, () => new D.TableRow({ height: { value: 440, rule: D.HeightRule.EXACT }, children: [new D.TableCell({ width: { size: width - indent, type: D.WidthType.DXA }, children: [new D.Paragraph('')] })] })),
+  }), new D.Paragraph({ children: [], spacing: { after: 60 } })];
+}
+
 // ---------- DOCX building blocks ----------
 async function docKit() {
   const D = await loadDocx();
@@ -41,7 +53,7 @@ async function docKit() {
   });
   const table = (widths, rows) => new D.Table({ width: { size: widths.reduce((a, b) => a + b, 0), type: D.WidthType.DXA }, columnWidths: widths, rows });
   const row = (cells, o = {}) => new D.TableRow({ children: cells, tableHeader: o.header, cantSplit: o.cantSplit });
-  const lines = (n, w = 9360) => Array.from({ length: n }, () => new D.Paragraph({ children: [run('')], spacing: { after: 0, line: 400 }, border: { bottom: { style: D.BorderStyle.SINGLE, size: 4, color: 'A0A0A0', space: 1 } } }));
+  const lines = (n, w = 9360) => ruledLines(D, n, { width: w });
 
   function header() {
     const kids = [];

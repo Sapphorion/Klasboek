@@ -6,6 +6,8 @@ import { buildContent, lessonContext } from '../generate.js';
 import { aiReady, aiUnavailableReason } from '../ai.js';
 import { exportLessonPlanDocx, exportWorksheetDocx, exportSlidesPptx, printLesson } from '../exporters.js';
 import { eventsOn, nextAssessment, typeOf, eventLabel } from '../events.js';
+import { creationFromLesson } from '../create/model.js';
+import { saveCreation } from '../state.js';
 
 let tab = 'plan';
 
@@ -69,7 +71,10 @@ function panel(l, save, draw, m) {
         expBtn('Slides', 'slides', () => exportSlidesPptx(l)),
         expBtn('Worksheet + memo', 'sheet', () => exportWorksheetDocx(l, { memo: true })),
         h('button', { class: 'btn ghost sm', onclick: () => printMenu(l) }, icon('print'), 'Print / PDF'),
-      ));
+      ),
+      h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Want pictures, themes or a different layout?'),
+        h('button', { class: 'btn ghost sm', onclick: async () => { const cr = await saveCreation(creationFromLesson(l, 'worksheet')); m.close(); location.hash = 'create/' + cr.id; } }, icon('pen', 16), 'Design the worksheet'),
+        h('button', { class: 'btn ghost sm', onclick: async () => { const cr = await saveCreation(creationFromLesson(l, 'slides')); m.close(); location.hash = 'create/' + cr.id; } }, icon('pen', 16), 'Design the slides')));
     const tabs = h('div', { class: 'tabs', role: 'tablist' }, ['plan', 'slides', 'worksheet', 'files'].map(t =>
       h('button', { role: 'tab', 'aria-selected': String(tab === t), onclick: () => { tab = t; draw(); } }, { plan: 'Lesson plan', slides: `Slides (${c.slides?.length || 0})`, worksheet: `Worksheet (${c.worksheet?.questions?.length || 0} questions)`, files: `Files (${l.materialIds?.length || 0})` }[t])));
     const pane = h('div', { class: 'tab-pane', role: 'tabpanel' });

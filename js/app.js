@@ -2,6 +2,7 @@ import { loadState, onChange, state } from './state.js';
 import { h, icon, toast } from './ui.js';
 import { renderPlanner } from './views/planner.js';
 import { renderCalendar } from './views/calendar.js';
+import { renderCreate } from './views/create.js';
 import { renderSubjects } from './views/subjects.js';
 import { renderTimetable } from './views/timetable.js';
 import { renderModeration } from './views/moderation.js';
@@ -10,6 +11,7 @@ import { renderSettings } from './views/settings.js';
 
 const ROUTES = [
   { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
+  { id: 'create', label: 'Create', short: 'Create', icon: 'pen', render: renderCreate },
   { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar },
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },

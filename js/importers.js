@@ -830,3 +830,19 @@ export function noticeFromText(text, year) {
   const level = levelM ? ({ provinsiaal: 'Provincial', distrik: 'District', kluster: 'Cluster', skool: 'School' }[levelM[1].toLowerCase()] || levelM[1][0].toUpperCase() + levelM[1].slice(1).toLowerCase()) : '';
   return { title, due, items: items.slice(0, 15), level, grade: gradeOf(text) };
 }
+
+// ---------- Plain text from any document (source material for Create) ----------
+export async function extractText(file) {
+  const k = kindOf(file);
+  if (k === 'pdf') {
+    const pages = await pdfPages(file);
+    const text = pagesToText(pages).replace(/ {2}\| {2}/g, '  ');
+    if (text.replace(/\s/g, '').length < 30) throw new Error('This PDF has no readable text (it may be a scan). Paste the text instead.');
+    return text;
+  }
+  if (k === 'docx') return (await docxTablesAndText(file)).text;
+  if (k === 'sheet') return (await sheetGrids(file)).map(s => gridToText(s.grid)).join('\n\n');
+  if (/\.(txt|md|csv)$/i.test(file.name) || file.type.startsWith('text/')) return file.text();
+  if (/\.pptx$/i.test(file.name)) throw new Error('PowerPoint files can’t be read yet. Save it as PDF first.');
+  throw new Error('Use a PDF, Word, Excel or text file.');
+}
