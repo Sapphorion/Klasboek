@@ -5,6 +5,7 @@ import { fmtLong, minutesBetween } from '../dates.js';
 import { buildContent, lessonContext } from '../generate.js';
 import { aiReady, aiUnavailableReason } from '../ai.js';
 import { exportLessonPlanDocx, exportWorksheetDocx, exportSlidesPptx, printLesson } from '../exporters.js';
+import { eventsOn, nextAssessment, typeOf, eventLabel } from '../events.js';
 
 let tab = 'plan';
 
@@ -24,7 +25,12 @@ function panel(l, save, draw, m) {
   const period = state.timetable.periods.find(p => p.id === l.periodId);
   const ctx = lessonContext(l);
 
+  const dayEvents = eventsOn(l.date);
+  const nextTest = nextAssessment(l.subjectId, l.date, 21);
   const details = h('section', { class: 'lp-details' },
+    (dayEvents.length || nextTest) ? h('div', { class: 'lp-events' },
+      dayEvents.map(e => h('a', { class: 'ev-row', href: '#calendar/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
+      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null,
     h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }), `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`),
     h('div', { class: 'form-grid' },
       field('Lesson title', h('input', { value: l.title || '', oninput: e => { l.title = e.target.value; save(); m.el.querySelector('header h2').textContent = l.title; } })),

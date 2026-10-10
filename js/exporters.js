@@ -3,6 +3,7 @@ import { state, subjectById, atpById } from './state.js';
 import { loadScript, download, safeName, esc } from './ui.js';
 import { fmt, fmtLong } from './dates.js';
 import { labelsFor, lessonContext } from './generate.js';
+import { eventsOn } from './events.js';
 
 const loadDocx = () => loadScript('vendor/docx.iife.js').then(() => window.docx);
 const loadPptx = () => loadScript('vendor/pptxgen.bundle.js').then(() => window.PptxGenJS);
@@ -220,7 +221,7 @@ export async function exportWeekPlanDocx(mondayIso, days) {
   const periods = state.timetable.periods;
   const kids = [k.p(`Weekly plan: week of ${fmt(mondayIso, { day: 'numeric', month: 'long', year: 'numeric' })}`, { bold: true, size: 32, color: k.B, after: 200 })];
   const widths = [1100, ...days.map(() => Math.floor((14600 - 1100) / days.length))];
-  const header = k.row([k.cell('', { w: widths[0], fill: k.B }), ...days.map((d, i) => k.cell(`${d.label}\n${fmt(d.date)}`, { bold: true, color: 'FFFFFF', fill: k.B, w: widths[i + 1] }))], { header: true });
+  const header = k.row([k.cell('', { w: widths[0], fill: k.B }), ...days.map((d, i) => k.cell(`${d.label}\n${fmt(d.date)}${eventsOn(d.date).map(e => '\n• ' + e.title).join('')}`, { bold: true, color: 'FFFFFF', fill: k.B, w: widths[i + 1] }))], { header: true });
   const rows = periods.map(p => k.row([
     k.cell(`${p.label}\n${p.start || ''}`, { bold: true, fill: 'EEF2F0', w: widths[0], size: 18 }),
     ...days.map((d, i) => {

@@ -1,6 +1,7 @@
 import { loadState, onChange, state } from './state.js';
 import { h, icon, toast } from './ui.js';
 import { renderPlanner } from './views/planner.js';
+import { renderCalendar } from './views/calendar.js';
 import { renderSubjects } from './views/subjects.js';
 import { renderTimetable } from './views/timetable.js';
 import { renderModeration } from './views/moderation.js';
@@ -8,12 +9,13 @@ import { renderMaterials } from './views/materials.js';
 import { renderSettings } from './views/settings.js';
 
 const ROUTES = [
-  { id: 'planner', label: 'Planner', icon: 'calendar', render: renderPlanner },
-  { id: 'subjects', label: 'Subjects & ATPs', icon: 'book', render: renderSubjects },
-  { id: 'timetable', label: 'Timetable', icon: 'grid', render: renderTimetable },
-  { id: 'moderation', label: 'Moderation', icon: 'check', render: renderModeration },
-  { id: 'materials', label: 'Materials', icon: 'folder', render: renderMaterials },
-  { id: 'settings', label: 'Settings', icon: 'gear', render: renderSettings },
+  { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
+  { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar },
+  { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
+  { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
+  { id: 'moderation', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
+  { id: 'materials', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
+  { id: 'settings', label: 'Settings', short: 'Settings', icon: 'gear', render: renderSettings },
 ];
 
 const main = document.getElementById('main');
@@ -33,7 +35,7 @@ function route() {
 function buildNav() {
   const ul = document.getElementById('nav');
   for (const r of ROUTES) {
-    ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id }, icon(r.icon, 20), h('span', {}, r.label))));
+    ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id, 'aria-label': r.label }, icon(r.icon, 20), h('span', { class: 'long' }, r.label), h('span', { class: 'short', 'aria-hidden': 'true' }, r.short))));
   }
 }
 

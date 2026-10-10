@@ -193,8 +193,53 @@ ATP content for this week:
 ${ctx.details || '(none given)'}
 ${ctx.lessonOfWeek ? `This is lesson ${ctx.lessonOfWeek.n} of ${ctx.lessonOfWeek.total} on this topic this week, so focus on the part that fits that position.` : ''}
 ${ctx.notes ? 'Teacher notes: ' + ctx.notes : ''}
+${ctx.upcomingTest ? (ctx.upcomingTest.sameDay ? `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on the day of this lesson; keep the lesson short and supportive around it.` : `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on ${ctx.upcomingTest.date}. Build in revision and exam-style practice that prepares them for it.`) : ''}
 Worksheet: about ${ctx.worksheetMarks || 20} marks.`,
     tool: { name: 'save_lesson', description: 'Save the lesson materials', schema: CONTENT_SCHEMA },
     maxTokens: 12000,
   });
+}
+
+// ---------- School calendar (year planner, test/exam timetable) ----------
+const EVENTS_SCHEMA = {
+  type: 'object',
+  properties: {
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD' },
+          endDate: { type: 'string', description: 'YYYY-MM-DD if it spans several days, else empty' },
+          title: { type: 'string', description: 'Short title as written, e.g. "Gr 10 Mathematics P1" or "Schools open"' },
+          type: { type: 'string', enum: ['exam', 'test', 'deadline', 'holiday', 'meeting', 'event'] },
+          time: { type: 'string', description: 'e.g. 08:00 or 08:00–10:00, else empty' },
+          grade: { type: 'string', description: 'Grade number or R if the event is for one grade, else empty' },
+          subject: { type: 'string', description: 'Subject name if it is a test or exam, else empty' },
+          noTeaching: { type: 'boolean', description: 'True if there is no normal teaching that day (public holiday, school closed, staff development day)' },
+        },
+        required: ['date', 'title', 'type'],
+      },
+    },
+  },
+  required: ['events'],
+};
+
+export async function aiReadCalendar({ text, image, pdf }, kind, year) {
+  const what = kind === 'assessments' ? 'a test and exam timetable' : 'a school year planner (calendar of events)';
+  const intro = `This is ${what} from a South African school. The year is ${year} unless the document says otherwise. List every dated item. For exam or test timetables, make one item per grade and subject paper. Use type "holiday" for public holidays and days without school.`;
+  const content = image
+    ? [{ type: 'image', source: { type: 'base64', media_type: image.split(';')[0].slice(5), data: image.split(',')[1] } }, { type: 'text', text: intro }]
+    : pdf ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } }, { type: 'text', text: intro }]
+    : `${intro}\n\n---\n${String(text).slice(0, 120000)}`;
+  const r = await call({
+    system: 'You extract dates and events from school documents accurately. Only report what is in the document.',
+    content,
+    tool: { name: 'save_events', description: 'Save the calendar events', schema: EVENTS_SCHEMA },
+    maxTokens: 16000,
+  });
+  return (r.events || []).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date)).map(e => ({
+    date: e.date, endDate: /^\d{4}-\d{2}-\d{2}$/.test(e.endDate || '') && e.endDate > e.date ? e.endDate : '',
+    title: e.title || '', type: e.type || 'event', time: e.time || '', grade: e.grade || '', subject: e.subject || '', noTeaching: !!e.noTeaching || e.type === 'holiday',
+  }));
 }

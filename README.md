@@ -6,6 +6,7 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 
 - **Subjects & ATPs**: upload a DBE ATP (PDF, Word or Excel). It is read on the device and shown for checking before saving. Complicated tables can be re-read with AI.
 - **Timetable**: import from Excel/Word, read a photo with AI, or fill the grid by hand. Supports one-week timetables and two-week cycles (Week A / Week B), including Day 1–10 layouts. The cycle can restart every term or carry on across terms, and a tap on the planner's Week badge swaps A and B if the school is out of step.
+- **School calendar**: upload the school's year planner and test or exam timetables (PDF, Word, Excel, or a photo read by AI). Dates are read on the device and shown for checking first; in a whole-school exam timetable only papers for your subjects are ticked. Public holidays and days marked "no teaching" are blocked off in the planner and skipped by auto-plan. Tests and exams show on your lessons, in a "Coming up" strip, on the weekly plan, and AI-written lessons before a test include revision. Month and list views; add or edit events by hand.
 - **Planner**: week view of your periods. Drag ATP topics onto periods (mouse, touch or pen), or tap a topic then tap a period. *Auto-plan week* fills your timetable from that week's ATP topics, per class.
 - **Lessons**: one click builds a lesson plan, slides and worksheet + memo, either written by Claude (online) or as a structured template from the ATP (offline). Everything is editable, then exports to Word (.docx), PowerPoint (.pptx) or print/PDF, with your school name, logo and colour.
 - **Moderation**: upload a marksheet, pick the name and mark columns, and it selects a sample spread across the 7 CAPS levels, always including the highest, lowest and pass/fail borderline learners. Enter moderator marks to see variance against your tolerance, complete the script and teacher-file checklists, and export a moderation report.
@@ -51,7 +52,8 @@ The app is built so these can be added without a rewrite:
 index.html, styles.css, sw.js, manifest.webmanifest
 js/app.js              navigation and start-up
 js/state.js, db.js     data and local storage
-js/importers.js        reading ATPs, timetables, marksheets
+js/importers.js        reading ATPs, timetables, marksheets, year planners, exam timetables
+js/events.js           school calendar helpers
 js/generate.js         lesson content (template + AI)
 js/ai.js               all Claude API calls
 js/exporters.js        Word, PowerPoint, print

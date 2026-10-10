@@ -48,6 +48,7 @@ export const state = {
   atp: [],       // { id, subjectId, term, week, weekEnd, topic, details, order }
   lessons: [],   // { id, date, periodId, subjectId, atpId, title, cls, notes, content, materialIds, done }
   materials: [], // { id, name, type, size, blob, subjectId, lessonId, added }
+  events: [],      // { id, date, endDate, title, type, time, subjectId, grade, cls, notes, noTeaching, source }
   moderations: [], // { id, title, subjectId, cls, task, total, learners:[{name, mark, modMark, sampled, reason}], checks:{}, fileChecks:{}, ... }
 };
 
@@ -63,6 +64,7 @@ export async function loadState() {
   state.lessons = await db.all('lessons');
   state.materials = await db.all('materials');
   state.moderations = await db.all('moderations');
+  state.events = await db.all('events');
 }
 
 export const atpSort = (a, b) => a.subjectId.localeCompare(b.subjectId) || a.term - b.term || a.week - b.week || (a.order || 0) - (b.order || 0);
@@ -175,4 +177,27 @@ export async function saveModeration(m, { silent = false } = {}) {
 export async function deleteModeration(id) {
   state.moderations = state.moderations.filter(m => m.id !== id);
   await db.del('moderations', id); emit('moderations');
+}
+
+// ---------- School calendar events ----------
+export const eventById = id => state.events.find(e => e.id === id);
+export async function saveEvent(e) {
+  if (!e.id) e.id = uid('e_');
+  const i = state.events.findIndex(x => x.id === e.id);
+  if (i < 0) state.events.push(e); else state.events[i] = e;
+  await db.put('events', e); emit('events');
+  return e;
+}
+export async function saveEvents(list) {
+  for (const e of list) {
+    if (!e.id) e.id = uid('e_');
+    const i = state.events.findIndex(x => x.id === e.id);
+    if (i < 0) state.events.push(e); else state.events[i] = e;
+  }
+  await db.putMany('events', list); emit('events');
+}
+export async function deleteEvents(ids) {
+  const set = new Set(ids);
+  state.events = state.events.filter(e => !set.has(e.id));
+  await db.delMany('events', ids); emit('events');
 }

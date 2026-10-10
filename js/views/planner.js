@@ -4,6 +4,8 @@ import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
+import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel } from '../events.js';
+import { editEvent } from './calendar.js';
 
 let weekStart = mondayOf(today());
 let trayScope = 'week';      // 'week' | 'term'
@@ -13,7 +15,7 @@ let picked = null;           // tap-to-place: { atpId } or { lessonId }
 let rootEl = null;
 export function renderPlanner(root) {
   rootEl = root;
-  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials'].includes(w)) rerender(); });
+  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events'].includes(w)) rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
 }
@@ -48,6 +50,7 @@ function view() {
     ),
   ));
 
+  wrap.append(comingUp());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
@@ -55,7 +58,10 @@ function view() {
   grid.append(h('div', { class: 'corner' }));
   for (const d of days) {
     const isToday = d.date === today();
-    grid.append(h('div', { class: 'day-head' + (isToday ? ' today' : ''), role: 'columnheader' }, h('strong', {}, d.label), h('span', {}, fmt(d.date))));
+    const evs = eventsOn(d.date);
+    grid.append(h('div', { class: 'day-head' + (isToday ? ' today' : ''), role: 'columnheader' }, h('strong', {}, d.label), h('span', {}, fmt(d.date)),
+      evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => editEvent(e) }, h('span', {}, e.title))),
+        evs.length > 3 ? h('a', { class: 'more', href: '#calendar/' + d.date }, `+${evs.length - 3}`) : null) : null));
   }
   for (const p of state.timetable.periods) {
     grid.append(h('div', { class: 'period-head', role: 'rowheader' }, h('strong', {}, p.label), p.start ? h('span', {}, p.start) : null));
@@ -72,6 +78,15 @@ function rerender() {
   const sc = rootEl.querySelector('.grid-scroll')?.scrollLeft || 0;
   rootEl.replaceChildren(view());
   const g = rootEl.querySelector('.grid-scroll'); if (g) g.scrollLeft = sc;
+}
+
+function comingUp() {
+  const list = upcoming({ from: today(), days: 21, limit: 5 });
+  if (!list.length) return h('span');
+  const rel = date => { const n = Math.round((new Date(date) - new Date(today())) / 864e5); return n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 ? fmt(date, { weekday: 'short' }) : fmt(date); };
+  return h('div', { class: 'coming-up', 'aria-label': 'Coming up' }, h('strong', {}, 'Coming up'),
+    list.map(e => h('a', { class: 'ev-chip', href: '#calendar/' + e.date, style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label },
+      h('span', { class: 'when' }, rel(e.date < today() ? today() : e.date)), h('span', {}, e.title))));
 }
 
 function cycleBadge(tw) {
@@ -95,12 +110,13 @@ function termJump(tw) {
 }
 
 function slot(d, p) {
-  const ttCell = cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
+  const closed = noTeachingOn(d.date);
+  const ttCell = closed ? null : cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
   const ttSubj = ttCell && subjectById(ttCell.subjectId);
   const lessons = state.lessons.filter(l => l.date === d.date && l.periodId === p.id);
   const school = inTerm(d.date);
   const el = h('div', {
-    class: 'slot' + (school ? '' : ' holiday') + (ttSubj ? ' expected' : ''),
+    class: 'slot' + (school ? '' : ' holiday') + (closed ? ' no-teach' : '') + (ttSubj ? ' expected' : ''),
     role: 'gridcell', 'data-date': d.date, 'data-period': p.id, tabindex: lessons.length ? -1 : 0,
     style: ttSubj ? { '--subj': ttSubj.colour } : {},
     'aria-label': `${d.label} period ${p.label}${ttSubj ? ', ' + ttSubj.name : ''}${lessons.length ? '' : ', empty'}`,
@@ -129,7 +145,7 @@ function lessonChip(l) {
   },
     h('span', { class: 'l-subj' }, `${s?.name || 'Lesson'}${l.cls ? ' · ' + l.cls : ''}`),
     h('span', { class: 'l-title' }, l.title || a?.topic || 'Untitled'),
-    h('span', { class: 'l-flags' }, hasContent ? h('span', { class: 'flag', title: 'Materials ready' }, icon('doc', 12), l.content.source === 'ai' ? 'AI' : 'Draft') : null, l.materialIds?.length ? h('span', { class: 'flag', title: 'Attached files' }, icon('clip', 12), l.materialIds.length) : null, l.done ? h('span', { class: 'flag' }, icon('check', 12), 'Taught') : null),
+    h('span', { class: 'l-flags' }, hasContent ? h('span', { class: 'flag', title: 'Materials ready' }, icon('doc', 12), l.content.source === 'ai' ? 'AI' : 'Draft') : null, l.materialIds?.length ? h('span', { class: 'flag', title: 'Attached files' }, icon('clip', 12), l.materialIds.length) : null, l.done ? h('span', { class: 'flag' }, icon('check', 12), 'Taught') : null, ...assessmentsForLesson(l).slice(0, 1).map(e => h('span', { class: 'flag assess', title: eventLabel(e) }, icon('flag', 12), e.type === 'exam' ? 'Exam' : 'Test'))),
   );
   makeDraggable(chip, { lessonId: l.id });
   chip.addEventListener('keydown', e => {
@@ -283,7 +299,7 @@ async function autoPlan() {
   const created = [];
   const groups = new Map(); // `${subjectId}|${cls}` -> [{date, periodId}]
   for (const d of days) {
-    if (!inTerm(d.date)) continue;
+    if (!inTerm(d.date) || noTeachingOn(d.date)) continue;
     for (const p of state.timetable.periods) {
       const tt = cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
       if (!tt?.subjectId) continue;

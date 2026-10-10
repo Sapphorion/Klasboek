@@ -93,8 +93,18 @@ async function docxTablesAndText(file) {
     g.termHint = hint;
     return g;
   });
+  // Paragraphs and table rows in document order (for calendars with month headings between tables).
+  const ordered = [];
+  const walk = el => {
+    for (const ch of el.children) {
+      if (ch.tagName === 'TABLE') { const i = tables.indexOf(ch); if (i >= 0) ordered.push(...grids[i]); }
+      else if (/^(P|H\d|LI)$/.test(ch.tagName)) { const t = ch.textContent.trim(); if (t) ordered.push([t]); }
+      else walk(ch);
+    }
+  };
+  walk(dom.body);
   const text = dom.body.innerText || dom.body.textContent;
-  return { grids, text, html };
+  return { grids, text, html, ordered };
 }
 
 function tableToGrid(table) {
@@ -558,3 +568,225 @@ export async function readMarksheet(file) {
   return { headers, rows: data, nameCols, markCols, totals };
 }
 export const toNumber = v => { const n = parseFloat(String(v).replace(',', '.').replace('%', '')); return isNaN(n) ? null : n; };
+
+// ---------- School calendar: year planners and test/exam timetables ----------
+// Finds dates in rows (Excel/Word tables, PDF lines). Understands "14 Jan 2026", "14/01/2026",
+// "2026-01-14", "January 14", ranges like "12–16 Oct" or "30 Jan – 3 Feb", month headings
+// followed by day-only rows, year planners with months across the top and days down the side,
+// and exam timetables with a column per grade. Afrikaans month and day names work too.
+const MONTHS = [
+  ['jan', 'january', 'januarie'], ['feb', 'febr', 'february', 'februarie'], ['mar', 'mrt', 'march', 'maart'], ['apr', 'april'],
+  ['may', 'mei'], ['jun', 'june', 'junie'], ['jul', 'july', 'julie'], ['aug', 'august', 'augustus'], ['sep', 'sept', 'september'],
+  ['oct', 'okt', 'october', 'oktober'], ['nov', 'november'], ['dec', 'des', 'december', 'desember'],
+];
+const MONTH_ALT = MONTHS.flat().sort((a, b) => b.length - a.length).join('|');
+const monthIdx = s => MONTHS.findIndex(m => m.includes(String(s).toLowerCase().replace(/\.$/, '')));
+const WD_ALT = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|maandag|dinsdag|woensdag|donderdag|vrydag|saterdag|sondag|thurs|tues|mon|tue|wed|thu|thur|fri|sat|sun';
+const WD_RE = new RegExp(`\\b(?:${WD_ALT})\\b\\.?,?`, 'gi');
+const ORD = '(?:st|nd|rd|th|ste|de)?';
+const RANGE_SEP = '\\s*(?:-|–|—|to|tot|until|till|&|and|en)\\s*';
+const DATE_PATTERNS = [
+  { re: /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g, f: m => [+m[1], +m[2] - 1, +m[3]] },
+  { re: /\b(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})\b/g, f: m => [yr(m[3]), +m[2] - 1, +m[1]] },
+  { re: new RegExp(`\\b(\\d{1,2})${ORD}(?:${RANGE_SEP}(\\d{1,2})${ORD})?\\s*(?:of\\s+)?(${MONTH_ALT})\\.?(?:,?\\s*(\\d{4}))?\\b`, 'gi'), f: (m, y) => [m[4] ? +m[4] : y, monthIdx(m[3]), +m[1], m[2] ? +m[2] : null] },
+  { re: new RegExp(`\\b(${MONTH_ALT})\\.?\\s+(\\d{1,2})${ORD}(?:${RANGE_SEP}(\\d{1,2})${ORD})?(?:,?\\s*(\\d{4}))?\\b`, 'gi'), f: (m, y) => [m[4] ? +m[4] : y, monthIdx(m[1]), +m[2], m[3] ? +m[3] : null] },
+];
+const yr = s => { const n = +s; return n < 100 ? 2000 + n : n; };
+const p2 = n => String(n).padStart(2, '0');
+function mkDate(y, m, d) {
+  if (!(m >= 0 && m < 12) || !(d >= 1 && d <= 31) || !(y > 1990 && y < 2100)) return null;
+  const dt = new Date(y, m, d);
+  return dt.getMonth() === m ? `${y}-${p2(m + 1)}-${p2(d)}` : null;
+}
+
+// All dates in a piece of text: [{ start, end, from, to }]
+export function findDates(text, year) {
+  const s = String(text || '');
+  const hits = [];
+  for (const { re, f } of DATE_PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(s))) {
+      if (hits.some(h => m.index < h.to && m.index + m[0].length > h.from)) continue; // overlaps an earlier match
+      const [y, mo, d, d2] = f(m, year);
+      const start = mkDate(y, mo, d);
+      if (!start) continue;
+      const end = d2 ? mkDate(y, mo, d2) : start;
+      hits.push({ start, end: end && end >= start ? end : start, from: m.index, to: m.index + m[0].length });
+    }
+  }
+  hits.sort((a, b) => a.from - b.from);
+  // "30 Jan – 3 Feb" → one range.
+  const out = [];
+  for (const h of hits) {
+    const prev = out.at(-1);
+    if (prev && new RegExp(`^${RANGE_SEP}$`, 'i').test(s.slice(prev.to, h.from)) && h.start >= prev.start) { prev.end = h.end; prev.to = h.to; }
+    else out.push({ ...h });
+  }
+  return out;
+}
+
+const TIME_IN = /\b(\d{1,2})[:h](\d{2})(?:\s*(?:-|–|to|tot)\s*(\d{1,2})[:h](\d{2}))?\b/;
+export const gradeOf = s => { const m = String(s).match(/\b(?:gr(?:ade|aad)?|graad)\.?\s*(\d{1,2}|r)\b(?!\s*(?:-|–|&|,|and|en|to|tot)\s*\d)/i); return m ? m[1].toUpperCase() : ''; };
+
+export function classifyEvent(title, fallback = 'event') {
+  const s = title.toLowerCase();
+  if (/public holiday|\bholiday|vakansie|no school|geen skool|school closed|skool gesluit|day off|learner[- ]free|pupil[- ]free|staff development day|personeelontwikkelingsdag|new year'?s day|human rights day|menseregtedag|good friday|goeie vrydag|family day|gesinsdag|freedom day|vryheidsdag|workers'? day|werkersdag|youth day|jeugdag|women'?s day|vrouedag|heritage day|erfenisdag|day of reconciliation|versoeningsdag|christmas day|kersdag|day of goodwill|welwillendheidsdag/.test(s)) return 'holiday';
+  if (/\bexam|eksamen|vraestel|\bpaper\s*\d|\bp\s?\d\b|\bnsc\b|prelim|trial exam/.test(s)) return 'exam';
+  if (/\btest|toets|\bsba\b|assessment|assessering|practical|prakties|investigation|ondersoek|\bquiz|\boral\b|mondeling|\bproject\b|\btask\b|\btaak\b|common paper/.test(s)) return 'test';
+  if (/\bdue\b|deadline|submi(t|ssion)|inhandig|sperdatum|marks? (in|due|to)|punte (in|indien)|reports? (due|to|issued)|moderation|moderering|sa-?sams/.test(s)) return 'deadline';
+  if (/meeting|vergadering|parents'? ?evening|ouer(aand|s)|\bstaff\b|personeel|briefing|workshop|training|cluster|\bsgb\b|\bagm\b/.test(s)) return 'meeting';
+  return fallback;
+}
+
+function cleanTitle(t) {
+  return String(t || '').replace(WD_RE, ' ').replace(/^[\s,;:|·•\-–—/]+|[\s,;:|·•\-–—/]+$/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+function makeEvent(range, title, { grade = '', fallback = 'event' } = {}) {
+  let time = '';
+  const tm = title.match(TIME_IN);
+  if (tm) { time = tm[3] ? `${p2(tm[1])}:${tm[2]}–${p2(tm[3])}:${tm[4]}` : `${p2(tm[1])}:${tm[2]}`; title = cleanTitle(title.replace(tm[0], ' ')); }
+  const type = classifyEvent(title, fallback);
+  return { date: range.start, endDate: range.end !== range.start ? range.end : '', title, time, type, grade: grade || gradeOf(title), noTeaching: type === 'holiday' };
+}
+
+const HEAD_WORD = /^(date|datum|day|dag|event|events|activity|activities|aktiwiteit|gebeurtenis|description|beskrywing|responsible|verantwoordelik|person|persoon|who|wie|venue|plek|lokaal|time|tyd|subject|vak|grade|graad|task|taak|paper|vraestel|duration|duur|notes?|notas|comments?|kommentaar)$/i;
+const NOTE_COL = /responsible|verantwoordelik|person|persoon|^who$|^wie$|venue|plek|lokaal|notes?|notas|comment|kommentaar|duration|duur/i;
+const WEEKDAY_CELL = new RegExp(`^(?:${WD_ALT}|ma|di|wo|do|vr|sa|so)\\.?$`, 'i');
+const DAY_ONLY = new RegExp(`^(?:(?:${WD_ALT})\\.?,?\\s*)?(\\d{1,2})${ORD}(?:\\s*(?:${WD_ALT})\\.?)?$`, 'i');
+const MONTH_HEAD = new RegExp(`^(${MONTH_ALT})\\.?(?:\\s+(\\d{4}))?$`, 'i');
+
+function eventsFromRows(rows, year, fallback) {
+  const out = [];
+  const ctx = { year, month: null };
+  let gradeCols = null, carry = null, noteCols = new Set(), gradeCol = -1;
+  for (const raw of rows) {
+    const row = raw.map(c => String(c ?? '').replace(/\s+/g, ' ').trim());
+    const filled = row.filter(Boolean);
+    if (!filled.length) { carry = null; continue; }
+    const joined = filled.join(' ');
+    const mh = joined.match(MONTH_HEAD);
+    if (mh) { ctx.month = monthIdx(mh[1]); if (mh[2]) ctx.year = +mh[2]; carry = null; continue; }
+    const yh = joined.match(/^(?:.*\b)?(20\d{2})(?:\b.*)?$/);
+    if (yh && joined.length < 60 && !findDates(joined, ctx.year).length && !/\d{1,2}[:h]\d{2}/.test(joined)) ctx.year = +yh[1];
+    // A header row with grade columns (exam timetables).
+    const gc = row.map((c, i) => [i, c.length < 20 ? gradeOf(c) : '']).filter(([, g]) => g);
+    if (gc.length >= 2 && !findDates(joined, ctx.year).length) { gradeCols = gc; carry = null; continue; }
+    // A header row like "Date | Day | Event | Responsible": names go into notes, not the title.
+    if (row.filter(c => HEAD_WORD.test(c)).length >= 2) {
+      noteCols = new Set(row.map((c, i) => NOTE_COL.test(c) ? i : -1).filter(i => i >= 0));
+      gradeCol = row.findIndex(c => /^(grade|graad|gr)$/i.test(c));
+      carry = null; continue;
+    }
+
+    let range = null, dateCol = -1, rest = '';
+    for (let i = 0; i < row.length && !range; i++) {
+      const d = findDates(row[i], ctx.year);
+      if (d.length) { range = d[0]; dateCol = i; rest = row[i].slice(0, d[0].from) + ' ' + row[i].slice(d[0].to); }
+    }
+    if (!range && ctx.month != null) {
+      for (let i = 0; i < Math.min(row.length, 3); i++) {
+        if (!row[i]) continue;
+        const m = row[i].match(DAY_ONLY);
+        if (m) { const dt = mkDate(ctx.year, ctx.month, +m[1]); if (dt) { range = { start: dt, end: dt }; dateCol = i; rest = ''; } }
+        break;
+      }
+    }
+    if (!range && carry && !row[carry.col]) { range = carry.range; dateCol = carry.col; rest = ''; }
+    if (!range) continue;
+    carry = { range, col: dateCol };
+
+    const cell = i => { if (noteCols.has(i) || i === gradeCol) return ''; const v = i === dateCol ? rest : row[i]; return WEEKDAY_CELL.test(v.trim()) ? '' : cleanTitle(v); };
+    const notes = [...noteCols].map(i => row[i]).filter(Boolean).join(' · ');
+    const rowGrade = gradeCol >= 0 ? (gradeOf('gr ' + row[gradeCol]) || row[gradeCol]) : '';
+    if (gradeCols) {
+      const gIdx = new Set(gradeCols.map(([i]) => i));
+      const shared = row.map((_, i) => i).filter(i => !gIdx.has(i)).map(cell).filter(Boolean);
+      let any = false;
+      for (const [ci, g] of gradeCols) {
+        const t = cell(ci);
+        if (!t || (ci > 0 && row[ci] === row[gradeCols.find(([c]) => c === ci - 1)?.[0]])) continue; // skip merged repeats
+        any = true;
+        const label = gradeOf(t) ? t : `Gr ${g} ${t}`;
+        out.push({ ...makeEvent(range, [label, ...shared.filter(x => TIME_IN.test(x))].join(' '), { grade: g, fallback }), notes });
+      }
+      if (any) continue;
+    }
+    const parts = [];
+    row.forEach((_, i) => { const t = cell(i); if (t && !parts.includes(t)) parts.push(t); });
+    const title = parts.join(' – ');
+    if (title && title.length > 1) out.push({ ...makeEvent(range, rowGrade && !gradeOf(title) ? `Gr ${rowGrade} ${title}` : title, { grade: rowGrade, fallback }), notes });
+  }
+  return out;
+}
+
+// Year planners laid out as a big grid: months across the top, day numbers down the side.
+function eventsFromMonthGrid(grid, year) {
+  for (let r = 0; r < Math.min(grid.length, 12); r++) {
+    const months = grid[r].map((c, i) => [i, String(c).trim().match(MONTH_HEAD)]).filter(([, m]) => m);
+    if (months.length < 3) continue;
+    const body = grid.slice(r + 1);
+    const isDay = v => /^\d{1,2}$/.test(String(v).trim()) && +v >= 1 && +v <= 31;
+    let dayCol = -1;
+    for (let c = 0; c < Math.min(4, Math.max(...grid.map(x => x.length))); c++) {
+      if (body.filter(row => isDay(row[c])).length >= 20) { dayCol = c; break; }
+    }
+    if (dayCol < 0) continue;
+    const out = [];
+    for (const row of body) {
+      if (!isDay(row[dayCol])) continue;
+      const day = +row[dayCol];
+      for (const [ci, m] of months) {
+        const y = m[2] ? +m[2] : year;
+        // A month may span two columns (weekday letter + event): read both.
+        const next = months.find(([c]) => c > ci)?.[0] ?? row.length;
+        const text = cleanTitle(row.slice(ci, next).filter(v => !isDay(v)).join(' ').replace(/^\s*[mtwfs]\b\.?/i, ''));
+        if (!text || text.length < 2) continue;
+        const dt = mkDate(y, monthIdx(m[1]), day);
+        if (dt) out.push(makeEvent({ start: dt, end: dt }, text));
+      }
+    }
+    if (out.length) return out;
+  }
+  return [];
+}
+
+function dedupeEvents(list) {
+  const seen = new Set();
+  return list.filter(e => { const k = `${e.date}|${e.title.toLowerCase()}|${e.grade}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// kind: 'planner' (year planner) or 'assessments' (test/exam timetable)
+export async function readCalendarFile(file, kind, year) {
+  const k = kindOf(file);
+  if (k === 'image') { const e = new Error('Photos are read with AI.'); e.needsAi = true; throw e; }
+  let grids = [], lines = [], text = '';
+  if (k === 'sheet') { const sheets = await sheetGrids(file); grids = sheets.map(s => s.grid); text = sheets.map(s => gridToText(s.grid)).join('\n\n'); }
+  else if (k === 'docx') {
+    if (ext(file) === 'doc') throw new Error('Old .doc files are not supported. Save it as .docx or PDF first.');
+    const d = await docxTablesAndText(file); grids = d.grids;
+    lines = d.ordered;
+    text = d.text;
+  } else if (k === 'pdf') {
+    const pages = await pdfPages(file);
+    for (const chunks of pages) {
+      const ls = [];
+      for (const c of chunks) { const l = ls.find(l => Math.abs(l.y - c.y) < 3); if (l) l.parts.push(c); else ls.push({ y: c.y, parts: [c] }); }
+      ls.sort((a, b) => a.y - b.y).forEach(l => lines.push(l.parts.sort((a, b) => a.x - b.x).map(p => p.str)));
+    }
+    text = lines.map(l => l.join('  |  ')).join('\n');
+    if (text.replace(/\s/g, '').length < 30) { const e = new Error('This PDF has no readable text (it may be a scan). Read it with AI instead.'); e.needsAi = true; throw e; }
+  } else throw new Error('Upload a PDF, Word, Excel file or a photo.');
+
+  const fileYear = (() => { const ys = (text.match(/\b20\d{2}\b/g) || []).map(Number); if (!ys.length) return year; const c = {}; ys.forEach(y => c[y] = (c[y] || 0) + 1); return +Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; })();
+  const fallback = kind === 'assessments' ? (/exam|eksamen/i.test(text) ? 'exam' : 'test') : 'event';
+  let events = [];
+  const monthGrids = grids.map(g => eventsFromMonthGrid(g, fileYear));
+  if (monthGrids.some(x => x.length)) events = monthGrids.flat();
+  else if (k === 'docx') events = eventsFromRows(lines, fileYear, fallback); // document order keeps month headings
+  else { for (const g of grids) events.push(...eventsFromRows(g, fileYear, fallback)); }
+  if (!events.length && lines.length) events = eventsFromRows(lines, fileYear, fallback);
+  return { events: dedupeEvents(events), text, year: fileYear };
+}

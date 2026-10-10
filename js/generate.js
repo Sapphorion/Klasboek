@@ -3,6 +3,7 @@
 import { state, subjectById, atpById } from './state.js';
 import { minutesBetween } from './dates.js';
 import { aiLessonContent, aiReady } from './ai.js';
+import { nextAssessment } from './events.js';
 
 export const LABELS = {
   English: {
@@ -34,6 +35,7 @@ export function lessonContext(lesson) {
     term: atp?.term, week: atp?.week, notes: lesson.notes || '',
     lessonOfWeek: siblings.length > 1 && n ? { n, total: siblings.length } : null,
     worksheetMarks: 20,
+    upcomingTest: (() => { const e = nextAssessment(lesson.subjectId, lesson.date, 21); return e ? { date: e.date, title: e.title, type: e.type, sameDay: e.date === lesson.date } : null; })(),
   };
 }
 
