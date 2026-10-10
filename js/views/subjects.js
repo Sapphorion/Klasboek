@@ -33,13 +33,38 @@ function view() {
   return wrap;
 }
 
+// CAPS subjects, grouped so the list is quick to scan on a tablet.
+const CAPS_SUBJECTS = [
+  ['Languages', ['English Home Language', 'English First Additional Language', 'Afrikaans Huistaal', 'Afrikaans Eerste Addisionele Taal', 'isiXhosa Home Language', 'isiXhosa First Additional Language', 'isiZulu Home Language', 'isiZulu First Additional Language', 'Sesotho Home Language', 'Sesotho First Additional Language', 'Setswana Home Language', 'Sepedi Home Language']],
+  ['Mathematics', ['Mathematics', 'Mathematical Literacy', 'Technical Mathematics']],
+  ['Sciences', ['Natural Sciences', 'Natural Sciences and Technology', 'Physical Sciences', 'Life Sciences', 'Technical Sciences', 'Agricultural Sciences']],
+  ['Humanities and commerce', ['Social Sciences', 'Geography', 'History', 'Economic and Management Sciences', 'Accounting', 'Business Studies', 'Economics', 'Tourism', 'Religion Studies']],
+  ['Technology', ['Technology', 'Computer Applications Technology', 'Information Technology', 'Engineering Graphics and Design', 'Consumer Studies', 'Hospitality Studies']],
+  ['Arts', ['Creative Arts', 'Visual Arts', 'Dramatic Arts', 'Music', 'Dance Studies']],
+  ['Life skills', ['Life Orientation', 'Life Skills']],
+];
+const ALL_CAPS = CAPS_SUBJECTS.flatMap(([, list]) => list);
+const OTHER = '__other__';
+
 function subjectForm(s, onSave) {
   const f = { name: s.name || '', grade: s.grade || '', language: s.language || 'English', colour: s.colour || SUBJECT_COLOURS[state.subjects.length % SUBJECT_COLOURS.length] };
-  const form = h('form', { class: 'form-grid', onsubmit: e => { e.preventDefault(); if (!f.name.trim()) { toast('Give the subject a name.', 'error'); return; } onSave({ ...s, ...f, name: f.name.trim() }); } },
-    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Subject'), h('input', { required: true, value: f.name, list: 'subject-names', placeholder: 'e.g. Mathematics', oninput: e => f.name = e.target.value })),
-    h('datalist', { id: 'subject-names' }, ['Mathematics', 'Mathematical Literacy', 'English Home Language', 'English First Additional Language', 'Afrikaans Huistaal', 'Afrikaans Eerste Addisionele Taal', 'Physical Sciences', 'Life Sciences', 'Natural Sciences', 'Natural Sciences and Technology', 'Social Sciences', 'Life Orientation', 'Technology', 'Economic and Management Sciences', 'Geography', 'History', 'Accounting', 'Business Studies'].map(n => h('option', { value: n }))),
-    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Grade'), h('select', { onchange: e => f.grade = e.target.value }, ['', 'R', ...Array.from({ length: 12 }, (_, i) => String(i + 1)), 'Adult'].map(g => h('option', { value: g, selected: g === String(f.grade) }, g || '—')))),
-    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Language for materials'), h('select', { onchange: e => f.language = e.target.value }, ['English', 'Afrikaans'].map(l => h('option', { selected: l === f.language }, l)))),
+  const isOther = !!f.name && !ALL_CAPS.includes(f.name);
+  const otherIn = h('input', { value: isOther ? f.name : '', placeholder: 'Type the subject name', 'aria-label': 'Subject name', hidden: !isOther, oninput: e => f.name = e.target.value });
+  const langSel = h('select', { onchange: e => f.language = e.target.value }, ['English', 'Afrikaans'].map(l => h('option', { selected: l === f.language }, l)));
+  const pick = h('select', { 'aria-label': 'Subject', onchange: e => {
+    const v = e.target.value;
+    if (v === OTHER) { otherIn.hidden = false; f.name = otherIn.value; otherIn.focus(); return; }
+    otherIn.hidden = true; f.name = v;
+    // Afrikaans subjects get Afrikaans materials by default.
+    if (v) { f.language = /^Afrikaans/.test(v) ? 'Afrikaans' : 'English'; langSel.value = f.language; }
+  } },
+    h('option', { value: '', disabled: true, selected: !f.name }, 'Choose a subject…'),
+    CAPS_SUBJECTS.map(([group, list]) => h('optgroup', { label: group }, list.map(n => h('option', { value: n, selected: n === f.name }, n)))),
+    h('option', { value: OTHER, selected: isOther }, 'Other (type your own)…'));
+  const form = h('form', { class: 'form-grid', onsubmit: e => { e.preventDefault(); if (!f.name.trim()) { toast('Choose a subject, or pick Other and type its name.', 'error'); return; } onSave({ ...s, ...f, name: f.name.trim() }); } },
+    h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Subject'), pick, otherIn),
+    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Grade'), h('select', { onchange: e => f.grade = e.target.value }, ['', 'R', ...Array.from({ length: 12 }, (_, i) => String(i + 1)), 'Adult'].map(g => h('option', { value: g, selected: g === String(f.grade) }, g ? (/^\d+$/.test(g) ? 'Grade ' + g : g === 'R' ? 'Grade R' : g) : 'Not grade-specific')))),
+    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Language for materials'), langSel),
     h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Colour'), h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Colour' }, SUBJECT_COLOURS.map(c => {
       const b = h('button', { type: 'button', class: 'sw', role: 'radio', 'aria-checked': String(c === f.colour), 'aria-label': c, style: { background: c } });
       b.onclick = () => { f.colour = c; b.parentElement.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-checked', String(x === b))); };

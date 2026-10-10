@@ -51,3 +51,16 @@ export function minutesBetween(a, b) {
   const m = (h2 * 60 + m2) - (h1 * 60 + m1);
   return m > 0 ? m : 45;
 }
+
+// ---------- Two-week timetable cycle ----------
+export function cycleWeekOf(s) {
+  const tt = state.timetable;
+  if ((tt.cycle || 1) < 2) return 1;
+  const tw = termWeekOf(s);
+  if (!tw) return 1;
+  let n = tw.week - 1;
+  if (tt.cycleMode === 'continuous') for (let t = 1; t < tw.term; t++) n += termWeeks(t);
+  return ((n + (tt.cycleOffset || 0)) % 2) + 1;
+}
+export const cycleLetter = w => (w === 2 ? 'B' : 'A');
+export const cellsFor = w => (w === 2 ? state.timetable.cellsB : state.timetable.cells) || {};

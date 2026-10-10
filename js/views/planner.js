@@ -1,7 +1,7 @@
 // Week planner: timetable periods × school days, ATP topics to drag in, lessons to open.
-import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel } from '../state.js';
+import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable } from '../state.js';
 import { h, icon, toast, confirmBox } from '../ui.js';
-import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex } from '../dates.js';
+import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
 
@@ -38,6 +38,7 @@ function view() {
       h('button', { class: 'icon-btn', 'aria-label': 'Previous week', onclick: () => { weekStart = addDays(weekStart, -7); rerender(); } }, icon('left')),
       h('div', { class: 'week-title' }, h('h1', {}, termLabel), h('span', { class: 'muted' }, `${fmt(days[0].date)} – ${fmt(days.at(-1).date, { day: 'numeric', month: 'short', year: 'numeric' })}`)),
       h('button', { class: 'icon-btn', 'aria-label': 'Next week', onclick: () => { weekStart = addDays(weekStart, 7); rerender(); } }, icon('right')),
+      cycleBadge(tw),
       weekStart !== mondayOf(today()) ? h('button', { class: 'btn ghost sm', onclick: () => { weekStart = mondayOf(today()); rerender(); } }, 'This week') : null,
       termJump(tw),
     ),
@@ -73,6 +74,20 @@ function rerender() {
   const g = rootEl.querySelector('.grid-scroll'); if (g) g.scrollLeft = sc;
 }
 
+function cycleBadge(tw) {
+  if ((state.timetable.cycle || 1) < 2 || !tw) return null;
+  const w = cycleWeekOf(addDays(weekStart, 1));
+  const other = cycleLetter(3 - w);
+  return h('button', {
+    class: 'cycle-badge', 'data-week': cycleLetter(w), title: `Tap if this should be Week ${other}`,
+    'aria-label': `Week ${cycleLetter(w)} of your two-week timetable. Tap to make this Week ${other}.`,
+    onclick: async () => {
+      await saveTimetable({ cycleOffset: 1 - (state.timetable.cycleOffset || 0) });
+      toast(`This week is now Week ${other}. The weeks after it have swapped too.`);
+    },
+  }, `Week ${cycleLetter(w)}`);
+}
+
 function termJump(tw) {
   const sel = h('select', { class: 'sm', 'aria-label': 'Jump to term', onchange: () => { const m = mondayOfTermWeek(+sel.value, 1); if (m) { weekStart = m; rerender(); } } },
     h('option', { value: '' }, 'Jump to…'), [1, 2, 3, 4].map(t => h('option', { value: t }, `Term ${t}`)));
@@ -80,7 +95,7 @@ function termJump(tw) {
 }
 
 function slot(d, p) {
-  const ttCell = state.timetable.cells[cellKey(d.i, p.id)];
+  const ttCell = cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
   const ttSubj = ttCell && subjectById(ttCell.subjectId);
   const lessons = state.lessons.filter(l => l.date === d.date && l.periodId === p.id);
   const school = inTerm(d.date);
@@ -230,7 +245,7 @@ async function placePicked(date, periodId) {
 
 async function dropOnSlot(payload, date, periodId) {
   const existing = state.lessons.find(l => l.date === date && l.periodId === periodId);
-  const tt = state.timetable.cells[cellKey(dayIdxOf(date), periodId)];
+  const tt = cellsFor(cycleWeekOf(date))[cellKey(dayIdxOf(date), periodId)];
   if (payload.atpId) {
     const a = atpById(payload.atpId);
     if (existing) {
@@ -270,7 +285,7 @@ async function autoPlan() {
   for (const d of days) {
     if (!inTerm(d.date)) continue;
     for (const p of state.timetable.periods) {
-      const tt = state.timetable.cells[cellKey(d.i, p.id)];
+      const tt = cellsFor(cycleWeekOf(d.date))[cellKey(d.i, p.id)];
       if (!tt?.subjectId) continue;
       if (state.lessons.some(l => l.date === d.date && l.periodId === p.id)) continue;
       const k = `${tt.subjectId}|${tt.cls || ''}`;
@@ -303,7 +318,7 @@ function onboarding() {
     { done: !!(s.teacherName || s.school), label: 'Add your name and school', href: '#settings' },
     { done: state.subjects.length > 0, label: 'Add your subjects', href: '#subjects' },
     { done: state.atp.length > 0, label: 'Upload an ATP', href: '#subjects' },
-    { done: Object.keys(state.timetable.cells).length > 0, label: 'Set up your timetable', href: '#timetable' },
+    { done: Object.keys(state.timetable.cells).length + Object.keys(state.timetable.cellsB || {}).length > 0, label: 'Set up your timetable', href: '#timetable' },
     { done: state.lessons.length > 0, label: 'Drag a topic into a period', href: '#planner' },
   ];
   const allDone = steps.every(x => x.done);

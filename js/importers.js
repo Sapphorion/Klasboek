@@ -356,18 +356,53 @@ export async function readAtpFile(file) {
 }
 
 // ---------- Timetable from Excel / Word ----------
-const DAY_NAMES = [
-  ['mon', 'monday', 'ma', 'maandag', 'day 1', 'dag 1', 'd1'],
-  ['tue', 'tues', 'tuesday', 'di', 'dinsdag', 'day 2', 'dag 2', 'd2'],
-  ['wed', 'wednesday', 'wo', 'woensdag', 'day 3', 'dag 3', 'd3'],
-  ['thu', 'thur', 'thurs', 'thursday', 'do', 'donderdag', 'day 4', 'dag 4', 'd4'],
-  ['fri', 'friday', 'vr', 'vrydag', 'day 5', 'dag 5', 'd5'],
-  ['sat', 'saturday', 'sa', 'saterdag', 'day 6', 'dag 6', 'd6'],
-  ['day 7', 'dag 7', 'd7'], ['day 8', 'dag 8', 'd8'], ['day 9', 'dag 9', 'd9'], ['day 10', 'dag 10', 'd10'],
+// Handles one-week timetables, two-week cycles laid out as two tables (Week A, Week B),
+// side-by-side columns ("Mon A" … "Fri B"), and numbered cycles (Day 1 … Day 10).
+const WEEKDAYS = [
+  ['mon', 'monday', 'ma', 'maandag'],
+  ['tue', 'tues', 'tuesday', 'di', 'dinsdag'],
+  ['wed', 'wednesday', 'wo', 'woensdag'],
+  ['thu', 'thur', 'thurs', 'thursday', 'do', 'donderdag'],
+  ['fri', 'friday', 'vr', 'vrydag'],
+  ['sat', 'saturday', 'sa', 'saterdag'],
 ];
-const dayIndex = s => { const t = String(s).toLowerCase().replace(/[.:]/g, '').trim(); return DAY_NAMES.findIndex(n => n.includes(t)); };
 const TIME_RE = /(\d{1,2})[:h.](\d{2})\s*(?:-|–|to|tot)\s*(\d{1,2})[:h.](\d{2})/;
 const BREAK_RE = /\b(break|pouse|interval|lunch|assembly|saal|recess)\b/i;
+const BLOCK_WEEK = /\b(?:week|wk|cycle|siklus)\s*([ab12])\b|\b([ab])[\s-]*(?:week|wk)\b/i;
+
+// "Mon" → {i:0, week:0}; "Tue B" / "B Tue" → {i:1, week:2}; "Day 7" → {i:1, week:2}
+function dayInfo(s) {
+  const t = String(s).toLowerCase().replace(/[.:]/g, '').replace(/\s+/g, ' ').trim();
+  if (!t || t.length > 20) return null;
+  const num = t.match(/^(?:day|dag|d)\s*(\d{1,2})$/);
+  if (num) { const n = +num[1]; if (n >= 1 && n <= 10) return n <= 5 ? { i: n - 1, week: 1, numbered: true } : { i: n - 6, week: 2, numbered: true }; return null; }
+  const idx = x => WEEKDAYS.findIndex(names => names.includes(x));
+  let i = idx(t);
+  if (i >= 0) return { i, week: 0 };
+  let m = t.match(/^(.+?)\s*(?:\(|-|\s)\s*(?:week\s*)?([ab12])\)?$/);
+  if (m && (i = idx(m[1].trim())) >= 0) return { i, week: /[a1]/.test(m[2]) ? 1 : 2 };
+  m = t.match(/^(?:week\s*)?([ab])\s*(?:-|:|\s)\s*(.+)$/);
+  if (m && (i = idx(m[2].trim())) >= 0) return { i, week: m[1] === 'a' ? 1 : 2 };
+  return null;
+}
+
+// Days repeated in one header (Mon…Fri Mon…Fri) without A/B labels: the second set is Week B.
+function resolveWeeks(infos) {
+  const seen = new Set();
+  return infos.map(d => {
+    if (d.week) return d;
+    if (seen.has(d.i)) return { ...d, week: 2 };
+    seen.add(d.i); return d;
+  });
+}
+
+function weekLabelNear(grid, r, prevR) {
+  for (let k = r; k > Math.max(prevR, r - 4); k--) {
+    const m = (grid[k] || []).join(' ').match(BLOCK_WEEK);
+    if (m) return /[a1]/i.test(m[1] || m[2]) ? 1 : 2;
+  }
+  return 0;
+}
 
 export async function readTimetableFile(file) {
   const k = kindOf(file);
@@ -375,44 +410,68 @@ export async function readTimetableFile(file) {
   if (k === 'sheet') grids = (await sheetGrids(file)).map(s => s.grid);
   else if (k === 'docx') grids = (await docxTablesAndText(file)).grids;
   else throw new Error('Upload an Excel or Word timetable, or a photo (read with AI).');
-  for (const g of grids) {
-    const r = timetableFromGrid(g);
-    if (r && r.cells.length) return r;
+  // Word files often put Week A and Week B in separate tables: read them all.
+  const found = grids.map((g, n) => ({ g, r: timetableFromGrid(g) })).filter(x => x.r && x.r.cells.length);
+  if (!found.length) throw new Error('Could not find day names (Mon–Fri, or Day 1–10) in this file. Fill the grid by hand or use a photo with AI.');
+  if (found.length >= 2 && found[0].r.cycle === 1 && found[1].r.cycle === 1) {
+    const [a, b] = found;
+    const bWeek = (weekLabelNear(b.g, 0, -1) || 2);
+    return { periods: a.r.periods, cycle: 2, cells: [...a.r.cells.map(c => ({ ...c, week: 1 })), ...b.r.cells.map(c => ({ ...c, week: bWeek }))] };
   }
-  throw new Error('Could not find day names (Mon–Fri) in this file. Fill the grid by hand or use a photo with AI.');
+  return found[0].r;
 }
 
 function timetableFromGrid(grid) {
-  // Days across the top?
-  for (let r = 0; r < Math.min(grid.length, 10); r++) {
-    const cols = grid[r].map((c, i) => [i, dayIndex(c)]).filter(([, d]) => d >= 0);
-    if (cols.length >= 3) return build(grid.slice(r + 1).map(row => ({ head: row.slice(0, cols[0][0]).join(' '), cells: cols.map(([ci, d]) => [d, row[ci]]) })));
+  // Days across the top: one or more header rows (e.g. a Week A table, then a Week B table below it).
+  const headers = [];
+  for (let r = 0; r < grid.length; r++) {
+    const cols = grid[r].map((c, i) => [i, dayInfo(c)]).filter(([, d]) => d);
+    if (cols.length >= 3) headers.push({ r, cols: resolveWeeks(cols.map(([, d]) => d)).map((d, k) => [cols[k][0], d]) });
   }
-  // Days down the side?
-  const T = grid[0]?.map((_, c) => grid.map(r => r[c] ?? '')) || [];
-  for (let c = 0; c < Math.min(T.length, 4); c++) {
-    const rows = T[c].map((v, i) => [i, dayIndex(v)]).filter(([, d]) => d >= 0);
+  if (headers.length) {
+    const blocks = headers.map((hd, b) => ({
+      week: weekLabelNear(grid, hd.r, headers[b - 1]?.r ?? -1) || (b === 1 ? 2 : 0),
+      rows: grid.slice(hd.r + 1, headers[b + 1]?.r ?? grid.length).map(row => ({ head: row.slice(0, hd.cols[0][0]).join(' '), cells: hd.cols.map(([ci, d]) => [d, row[ci]]) })),
+    }));
+    return build(blocks);
+  }
+  // Days down the side.
+  const width = Math.max(0, ...grid.map(r => r.length));
+  for (let c = 0; c < Math.min(width, 4); c++) {
+    const rows = grid.map((row, i) => [i, dayInfo(row[c] ?? '')]).filter(([, d]) => d);
     if (rows.length >= 3) {
+      const days = resolveWeeks(rows.map(([, d]) => d));
       const headerRow = grid[rows[0][0] - 1] || grid[0];
       const periodCols = headerRow.map((v, i) => i).filter(i => i > c);
-      return build(periodCols.map(pc => ({ head: headerRow[pc], cells: rows.map(([ri, d]) => [d, grid[ri][pc]]) })));
+      return build([{ week: 0, rows: periodCols.map(pc => ({ head: headerRow[pc], cells: rows.map(([ri], k) => [days[k], grid[ri][pc]]) })) }]);
     }
   }
   return null;
 
-  function build(periodRows) {
+  function build(blocks) {
     const periods = [], cells = [];
-    for (const pr of periodRows) {
-      const filled = pr.cells.filter(([, v]) => v);
-      if (!filled.length && !pr.head) continue;
-      if (BREAK_RE.test(pr.head) || (filled.length && filled.every(([, v]) => BREAK_RE.test(v)))) continue;
-      const tm = String(pr.head).match(TIME_RE);
-      const label = String(pr.head).replace(TIME_RE, '').replace(/period|periode/i, '').trim() || String(periods.length + 1);
-      const pi = periods.length;
-      periods.push({ label: label.slice(0, 12), start: tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '', end: tm ? `${tm[3].padStart(2, '0')}:${tm[4]}` : '' });
-      for (const [d, v] of pr.cells) if (v) cells.push({ dayIndex: d, periodIndex: pi, ...splitCell(v) });
-    }
-    return { periods, cells };
+    blocks.forEach((blk, b) => {
+      let order = 0;
+      for (const pr of blk.rows) {
+        const filled = pr.cells.filter(([, v]) => v);
+        if (!filled.length && !pr.head) continue;
+        if (BREAK_RE.test(pr.head) || (filled.length && filled.every(([, v]) => BREAK_RE.test(v)))) continue;
+        if (!filled.length && BLOCK_WEEK.test(pr.head)) continue; // a "Week B" title row
+        const tm = String(pr.head).match(TIME_RE);
+        const label = (String(pr.head).replace(TIME_RE, '').replace(/period|periode/i, '').trim() || String(order + 1)).slice(0, 12);
+        const period = { label, start: tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : '', end: tm ? `${tm[3].padStart(2, '0')}:${tm[4]}` : '' };
+        let pi;
+        if (b === 0) { pi = periods.length; periods.push(period); }
+        else {
+          pi = periods.findIndex(p => p.label === label);
+          if (pi < 0) pi = order;
+          while (periods.length <= pi) periods.push({ label: String(periods.length + 1), start: '', end: '' });
+        }
+        order++;
+        for (const [d, v] of pr.cells) if (v) cells.push({ dayIndex: d.i, periodIndex: pi, week: d.week || blk.week || 1, ...splitCell(v) });
+      }
+    });
+    return { periods, cells, cycle: cells.some(c => c.week === 2) ? 2 : 1 };
   }
 }
 

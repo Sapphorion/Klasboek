@@ -5,7 +5,7 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 ## What it does
 
 - **Subjects & ATPs**: upload a DBE ATP (PDF, Word or Excel). It is read on the device and shown for checking before saving. Complicated tables can be re-read with AI.
-- **Timetable**: import from Excel/Word, read a photo with AI, or fill the grid by hand.
+- **Timetable**: import from Excel/Word, read a photo with AI, or fill the grid by hand. Supports one-week timetables and two-week cycles (Week A / Week B), including Day 1–10 layouts. The cycle can restart every term or carry on across terms, and a tap on the planner's Week badge swaps A and B if the school is out of step.
 - **Planner**: week view of your periods. Drag ATP topics onto periods (mouse, touch or pen), or tap a topic then tap a period. *Auto-plan week* fills your timetable from that week's ATP topics, per class.
 - **Lessons**: one click builds a lesson plan, slides and worksheet + memo, either written by Claude (online) or as a structured template from the ATP (offline). Everything is editable, then exports to Word (.docx), PowerPoint (.pptx) or print/PDF, with your school name, logo and colour.
 - **Moderation**: upload a marksheet, pick the name and mark columns, and it selects a sample spread across the 7 CAPS levels, always including the highest, lowest and pass/fail borderline learners. Enter moderator marks to see variance against your tolerance, complete the script and teacher-file checklists, and export a moderation report.
@@ -41,7 +41,7 @@ The app is built so these can be added without a rewrite:
 
 ## Known limits
 
-- Timetables are Monday–Saturday weekdays; rotating day-cycles (Day 1–Day 10) aren't supported yet.
+- Day cycles that skip public holidays (where Day 4 moves to the next school day) aren't supported; the cycle follows calendar weeks.
 - Scanned (image-only) PDFs can't be read offline; use "Read with AI" or a Word/Excel version.
 - Template lessons are a structured starting point; AI-written lessons should still be checked before class.
 

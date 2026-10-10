@@ -130,7 +130,7 @@ export async function aiReadTimetable(dataUrl, days) {
     system: 'You read school timetables from images accurately. Only report what is visible.',
     content: [
       { type: 'image', source: { type: 'base64', media_type: media, data: b64 } },
-      { type: 'text', text: `This is a teacher's timetable. Days in the app are: ${days.join(', ')} (dayIndex 0 = ${days[0]}). List the teaching periods (label and times if shown) and every cell that has a lesson. For each cell give the subject as written and the class/group (e.g. 9B) if shown. Skip breaks.` },
+      { type: 'text', text: `This is a teacher's timetable. Days in the app are: ${days.join(', ')} (dayIndex 0 = ${days[0]}). List the teaching periods (label and times if shown) and every cell that has a lesson. For each cell give the subject as written and the class/group (e.g. 9B) if shown. Skip breaks. If it is a two-week cycle (Week A and Week B, or Day 1 to Day 10), set week to 1 for Week A / Days 1-5 and 2 for Week B / Days 6-10, with dayIndex 0-4 inside that week. Otherwise set week to 1.` },
     ],
     tool: {
       name: 'save_timetable', description: 'Save the timetable',
@@ -138,7 +138,7 @@ export async function aiReadTimetable(dataUrl, days) {
         type: 'object',
         properties: {
           periods: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, start: { type: 'string', description: 'HH:MM 24h or empty' }, end: { type: 'string', description: 'HH:MM 24h or empty' } }, required: ['label'] } },
-          cells: { type: 'array', items: { type: 'object', properties: { dayIndex: { type: 'integer' }, periodIndex: { type: 'integer', description: '0-based index into periods' }, subject: { type: 'string' }, cls: { type: 'string' }, room: { type: 'string' } }, required: ['dayIndex', 'periodIndex', 'subject'] } },
+          cells: { type: 'array', items: { type: 'object', properties: { week: { type: 'integer', description: '1 = Week A (or the only week), 2 = Week B' }, dayIndex: { type: 'integer' }, periodIndex: { type: 'integer', description: '0-based index into periods' }, subject: { type: 'string' }, cls: { type: 'string' }, room: { type: 'string' } }, required: ['dayIndex', 'periodIndex', 'subject'] } },
         },
         required: ['periods', 'cells'],
       },

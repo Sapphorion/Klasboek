@@ -33,7 +33,11 @@ const defaultTimetable = () => ({
     { id: 'p6', label: '6', start: '12:10', end: '12:55' },
     { id: 'p7', label: '7', start: '12:55', end: '13:40' },
   ],
-  cells: {}, // key `${dayIndex}|${periodId}` -> { subjectId, cls, room }
+  cells: {},  // Week A (or the only week): key `${dayIndex}|${periodId}` -> { subjectId, cls, room }
+  cellsB: {}, // Week B, used when cycle is 2
+  cycle: 1,   // 1 = same every week, 2 = two-week cycle (Week A / Week B)
+  cycleMode: 'term', // 'term' = every term starts on Week A, 'continuous' = carries on across terms
+  cycleOffset: 0,    // 1 swaps A and B (set from the planner if the school is out of step)
   image: '', // optional photo of the printed timetable, shown beside the grid
 });
 
