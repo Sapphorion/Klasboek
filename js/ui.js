@@ -128,3 +128,20 @@ export function dropZone({ accept, label, hint, onFiles, multiple = false }) {
   zone.addEventListener('drop', e => { const f = [...e.dataTransfer.files]; if (f.length) onFiles(multiple ? f : [f[0]]); });
   return zone;
 }
+
+// Share a file with the device's share sheet (WhatsApp, email, Drive…); download it where sharing isn't available.
+export async function shareFile({ blob, name }, title = '') {
+  const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: title || name }); return 'shared'; }
+    catch (e) { if (e.name === 'AbortError') return 'cancelled'; }
+  }
+  download(blob, name);
+  toast('This device can’t share files from here, so it was downloaded. Attach it from your downloads.');
+  return 'downloaded';
+}
+export async function shareText(text, title = '') {
+  if (navigator.share) { try { await navigator.share({ title, text }); return 'shared'; } catch (e) { if (e.name === 'AbortError') return 'cancelled'; } }
+  try { await navigator.clipboard.writeText(text); toast('Copied. Paste it into WhatsApp, an email or your class group.'); return 'copied'; }
+  catch { toast('Could not copy. Select the text and copy it yourself.', 'error'); return 'failed'; }
+}

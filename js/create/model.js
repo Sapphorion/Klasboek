@@ -235,3 +235,21 @@ export function applyAi(c, r, previous = null) {
   }
   return c;
 }
+
+// A lesson's learner notes → a notes material you can design.
+export function creationFromNotes(lesson) {
+  const n = lesson.content?.notes || {};
+  const c = blankCreation('notes', { subjectId: lesson.subjectId, title: n.title || lesson.title, atpId: lesson.atpId });
+  c.lessonId = lesson.id;
+  const blocks = [];
+  if (n.intro) blocks.push({ type: 'text', text: n.intro });
+  for (const s of n.sections || []) {
+    blocks.push({ type: 'heading', text: s.heading || '' });
+    if (s.text) blocks.push({ type: 'text', text: s.text });
+    if ((s.bullets || []).filter(Boolean).length) blocks.push({ type: 'list', items: s.bullets.filter(Boolean) });
+  }
+  if ((n.keyPoints || []).filter(Boolean).length) blocks.push({ type: 'box', title: 'Key points', text: n.keyPoints.filter(Boolean).map(k => '• ' + k).join('\n'), style: 'key' });
+  if ((lesson.content?.vocabulary || []).length) blocks.push({ type: 'vocab', items: lesson.content.vocabulary.map(v => ({ ...v })) });
+  c.blocks = blocks;
+  return c;
+}

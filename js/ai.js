@@ -148,6 +148,17 @@ export async function aiReadTimetable(dataUrl, days) {
 }
 
 // ---------- Lesson content ----------
+const NOTES_SCHEMA = {
+  type: 'object', description: 'Summarised learner notes (1-2 pages) learners keep and revise from',
+  properties: {
+    title: { type: 'string' },
+    intro: { type: 'string', description: 'One or two sentences' },
+    sections: { type: 'array', items: { type: 'object', properties: { heading: { type: 'string' }, text: { type: 'string', description: 'Clear explanation in short paragraphs, with a worked example where it fits' }, bullets: { type: 'array', items: { type: 'string' } } }, required: ['heading', 'text'] } },
+    keyPoints: { type: 'array', items: { type: 'string' }, description: '4-8 key points to remember' },
+  },
+  required: ['title', 'sections', 'keyPoints'],
+};
+
 export const CONTENT_SCHEMA = {
   type: 'object',
   properties: {
@@ -167,6 +178,7 @@ export const CONTENT_SCHEMA = {
       type: 'array', description: '6-12 classroom slides. Short bullets learners can read from the back of a class.',
       items: { type: 'object', properties: { title: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } }, notes: { type: 'string', description: 'Teacher speaker notes' } }, required: ['title', 'bullets'] },
     },
+    notes: NOTES_SCHEMA,
     worksheet: {
       type: 'object',
       properties: {
@@ -176,7 +188,7 @@ export const CONTENT_SCHEMA = {
       required: ['title', 'instructions', 'questions'],
     },
   },
-  required: ['title', 'objectives', 'phases', 'slides', 'worksheet'],
+  required: ['title', 'objectives', 'phases', 'slides', 'worksheet', 'notes'],
 };
 
 export async function aiLessonContent(ctx) {
@@ -194,7 +206,8 @@ ${ctx.details || '(none given)'}
 ${ctx.lessonOfWeek ? `This is lesson ${ctx.lessonOfWeek.n} of ${ctx.lessonOfWeek.total} on this topic this week, so focus on the part that fits that position.` : ''}
 ${ctx.notes ? 'Teacher notes: ' + ctx.notes : ''}
 ${ctx.upcomingTest ? (ctx.upcomingTest.sameDay ? `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on the day of this lesson; keep the lesson short and supportive around it.` : `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on ${ctx.upcomingTest.date}. Build in revision and exam-style practice that prepares them for it.`) : ''}
-Worksheet: about ${ctx.worksheetMarks || 20} marks.`,
+Worksheet (the class activity): about ${ctx.worksheetMarks || 20} marks.
+Also write summarised learner notes for this lesson that learners keep and revise from.`,
     tool: { name: 'save_lesson', description: 'Save the lesson materials', schema: CONTENT_SCHEMA },
     maxTokens: 12000,
   });
@@ -355,4 +368,14 @@ Teacher’s note: ${text}`,
     maxTokens: 3000,
   });
   return r.items || [];
+}
+
+export async function aiLessonNotes(ctx) {
+  const lang = ctx.language && ctx.language !== 'English' ? `Write everything in ${ctx.language}.` : 'Write in South African English.';
+  return call({
+    system: `You are an experienced South African teacher writing CAPS-aligned learner notes. Clear, accurate, at the right level for the grade, with South African examples. ${lang}`,
+    content: `Write summarised learner notes (1-2 pages) for this lesson.\nSubject: ${ctx.subject}\nGrade: ${ctx.grade || 'not specified'}\nTopic: ${ctx.topic}\nATP content:\n${ctx.details || '(none given)'}${ctx.notes ? '\nTeacher notes: ' + ctx.notes : ''}`,
+    tool: { name: 'save_notes', description: 'Save the notes', schema: NOTES_SCHEMA },
+    maxTokens: 8000,
+  });
 }

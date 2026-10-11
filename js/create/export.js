@@ -4,6 +4,7 @@ import { loadScript, download, safeName } from '../ui.js';
 import { docKit, ruledLines } from '../exporters.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
 import { rubricMax } from './render.js';
+import { checkFor, trapRun } from '../aicheck.js';
 
 const brandHex = () => (state.settings.brandColour || '#1E3B33').replace('#', '').toUpperCase();
 const themeColour = c => ({ classic: '111111', ink: '333333' }[c.design?.theme] || brandHex());
@@ -72,6 +73,8 @@ export async function exportCreationDocx(c) {
       if (c.design?.header && assess) kids.push(learner(total), para('', { after: 120 }));
       if (c.type === 'test' && ins.length) kids.push(table([9360], [row([cell([para('Instructions', { bold: true }), ...ins.map((t, i) => para(`${i + 1}.  ${t}`))], 9360)])]), para(''));
     }
+    const chk = assess ? checkFor(c) : null;
+    if (chk?.on) kids.push(new D.Paragraph({ children: [trapRun(D, chk)] }));
     let open = -1;
     const closeSec = () => { if (open >= 0 && assess) kids.push(para(`[${secTot.get(open)}]`, { bold: true, align: D.AlignmentType.RIGHT })); open = -1; };
     for (let i = 0; i < blocks.length; i++) {
@@ -114,10 +117,12 @@ export async function exportCreationDocx(c) {
     }
     closeSec();
     if (c.type === 'test') kids.push(para(`TOTAL: ${total}`, { bold: true, size: 26, align: D.AlignmentType.RIGHT, before: 200 }));
+    if (chk?.on) kids.push(new D.Paragraph({ children: [trapRun(D, chk)] }));
     if (assess && c.design?.memo) {
       const names = c.meta?.levelNames || [];
       const W = c.type === 'test' ? [900, 5560, 900, 2000] : [900, 7560, 900];
       kids.push(pageBreak(), new D.Paragraph({ spacing: { after: 160 }, children: [new D.TextRun({ text: `Memorandum: ${c.title}`, bold: true, size: sz(32), font: hf, color: col })] }));
+      if (chk?.on) kids.push(para(`AI check: the learner pages hide an instruction for AI tools. If “${chk.word}” turns up in answers (about ${chk.n} times), the questions were probably pasted into an AI tool. Talk to the learner before drawing conclusions.`, { italics: true, size: 18, color: '666666', after: 160 }));
       const headCells = ['No.', 'Answer', 'Marks', 'Level'].slice(0, W.length).map((t, i) => cell([para(t, { bold: true, color: 'FFFFFF' })], W[i], { fill: col }));
       const rows = [row(headCells, { header: true })];
       blocks.forEach((b, i) => {

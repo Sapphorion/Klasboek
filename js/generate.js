@@ -10,12 +10,14 @@ export const LABELS = {
     lessonPlan: 'Lesson plan', worksheet: 'Worksheet', memo: 'Memorandum', subject: 'Subject', grade: 'Grade', cls: 'Class', date: 'Date', duration: 'Duration', teacher: 'Teacher', topic: 'Topic', term: 'Term', week: 'Week',
     objectives: 'Lesson objectives', objIntro: 'By the end of the lesson learners should be able to:', prior: 'Prior knowledge', vocab: 'Key vocabulary', resources: 'Resources', phases: 'Lesson phases', phase: 'Phase', minutes: 'Min', teacherActs: 'Teacher', learnerActs: 'Learners',
     assessment: 'Assessment', differentiation: 'Differentiation', support: 'Support', extension: 'Extension', homework: 'Homework', reflection: 'Reflection (after the lesson)', reflectQ: ['What went well?', 'What would I change?', 'Learners needing follow-up:'],
+    notes: 'Notes', keyPoints: 'Key points', activity: 'Activity',
     name: 'Name', total: 'Total', marks: 'marks', today: 'Today we will', recap: 'Recap', activity: 'Activity', question: 'Question', atpContent: 'ATP content', weekPlan: 'Weekly plan',
   },
   Afrikaans: {
     lessonPlan: 'Lesplan', worksheet: 'Werkkaart', memo: 'Memorandum', subject: 'Vak', grade: 'Graad', cls: 'Klas', date: 'Datum', duration: 'Duur', teacher: 'Onderwyser', topic: 'Onderwerp', term: 'Kwartaal', week: 'Week',
     objectives: 'Lesdoelwitte', objIntro: 'Aan die einde van die les behoort leerders te kan:', prior: 'Voorkennis', vocab: 'Sleutelwoordeskat', resources: 'Hulpbronne', phases: 'Lesfases', phase: 'Fase', minutes: 'Min', teacherActs: 'Onderwyser', learnerActs: 'Leerders',
     assessment: 'Assessering', differentiation: 'Differensiasie', support: 'Ondersteuning', extension: 'Verryking', homework: 'Huiswerk', reflection: 'Refleksie (na die les)', reflectQ: ['Wat het goed gegaan?', 'Wat sal ek verander?', 'Leerders wat opvolg nodig het:'],
+    notes: 'Notas', keyPoints: 'Kernpunte', activity: 'Aktiwiteit',
     name: 'Naam', total: 'Totaal', marks: 'punte', today: 'Vandag gaan ons', recap: 'Opsomming', activity: 'Aktiwiteit', question: 'Vraag', atpContent: 'JOP-inhoud', weekPlan: 'Weeklikse beplanning',
   },
 };
@@ -91,11 +93,31 @@ export function templateContent(ctx) {
   };
 }
 
+// Learner notes from the ATP content (offline starting point).
+export function templateNotes(ctx) {
+  const af = ctx.language === 'Afrikaans';
+  const META = /^(resources|hulpbronne|informal assessment|formal assessment|assessment|assessering|sba)\b[^:]*:\s*/i;
+  const lines = ctx.details.split('\n').map(s => s.trim()).filter(l => l && !META.test(l));
+  const points = lines.length ? lines : [ctx.topic];
+  return {
+    title: ctx.topic,
+    intro: af ? `In hierdie les leer ons oor ${ctx.topic.toLowerCase()}.` : `In this lesson we learn about ${ctx.topic.toLowerCase()}.`,
+    sections: points.map(p => ({ heading: p.replace(/[.;:]$/, ''), text: '', bullets: [] })),
+    keyPoints: points.map(p => p.replace(/[.;:]$/, '')),
+  };
+}
+
+export async function buildNotes(lesson, { useAi } = {}) {
+  const ctx = lessonContext(lesson);
+  if (useAi && aiReady()) { const { aiLessonNotes } = await import('./ai.js'); return { ...(await aiLessonNotes(ctx)), source: 'ai' }; }
+  return { ...templateNotes(ctx), source: 'template' };
+}
+
 export async function buildContent(lesson, { useAi } = {}) {
   const ctx = lessonContext(lesson);
   if (useAi && aiReady()) {
     const c = await aiLessonContent(ctx);
     return { ...c, source: 'ai', generated: new Date().toISOString() };
   }
-  return { ...templateContent(ctx), generated: new Date().toISOString() };
+  return { ...templateContent(ctx), notes: templateNotes(ctx), generated: new Date().toISOString() };
 }

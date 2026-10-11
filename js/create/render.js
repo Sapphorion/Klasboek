@@ -3,6 +3,7 @@
 import { state, subjectById } from '../state.js';
 import { esc } from '../ui.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
+import { checkFor, trapHtml } from '../aicheck.js';
 
 export const THEMES = [
   { id: 'classic', label: 'Classic', note: 'Formal, for tests and exams' },
@@ -164,6 +165,8 @@ function renderDoc(c) {
     if (d.header && assess) h += learnerBox(total);
     if (c.type === 'test' && (c.meta?.instructions || []).length) h += `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>`;
   }
+  const chk = assess ? checkFor(c) : null;
+  if (chk?.on) h += `<div>${trapHtml(chk)}</div>`;
   let openSec = -1;
   const closeSec = () => { if (openSec >= 0 && assess) h += `<div class="sec-total">[${secTot.get(openSec)}]</div>`; openSec = -1; };
   blocks.forEach((b, i) => {
@@ -189,7 +192,8 @@ function renderDoc(c) {
     }
   });
   closeSec();
-  if (c.type === 'test') h += `<div class="total">TOTAL: ${total}</div>`;
+  if (c.type === 'test') h += `<div class="total">TOTAL: ${total}${trapHtml(chk)}</div>`;
+  else if (chk?.on) h += `<div>${trapHtml(chk)}</div>`;
   if (assess && d.memo) h += renderMemo(c, nums, total);
   return h;
 }
@@ -198,6 +202,7 @@ function renderMemo(c, nums, total) {
   const blocks = c.blocks || [];
   const names = c.meta?.levelNames || [];
   let h = `<div class="pb"></div><h1 class="memo-title">Memorandum</h1><p class="sub">${esc(c.title)}${subLine(c) ? ' · ' + esc(subLine(c)) : ''}</p>`;
+  if (c.aiCheck?.on) h += `<p class="sub" style="font-size:.8em;font-style:italic">AI check: the learner pages hide an instruction for AI tools. If “${esc(c.aiCheck.word)}” turns up in answers (about ${c.aiCheck.n} times), the questions were probably pasted into an AI tool. Talk to the learner before drawing conclusions.</p>`;
   h += `<table><tr><th style="width:4.5em">No.</th><th>Answer</th><th style="width:4em">Marks</th>${c.type === 'test' ? '<th style="width:9em">Level</th>' : ''}</tr>`;
   blocks.forEach((b, i) => {
     if (b.type === 'section') h += `<tr><th colspan="${c.type === 'test' ? 4 : 3}">${nums.get(i)}${b.title ? ': ' + esc(b.title) : ''}</th></tr>`;

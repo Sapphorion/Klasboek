@@ -8,6 +8,8 @@ import { termWeekOf, today, fmt } from '../dates.js';
 import { TYPES, typeInfo, isBlockDoc, BLOCKS, blockLabel, newBlock, templateCreation, blankCreation, applyAi, toAiJson, numberBlocks, totalMarks, cogGrid, COG_PRESETS, cogPresetFor } from '../create/model.js';
 import { THEMES, themeCss, renderCreation, printCreation, rubricMax } from '../create/render.js';
 import { exportCreationDocx, exportCreationPptx } from '../create/export.js';
+import { checkFor } from '../aicheck.js';
+import { openChecker } from './checker.js';
 
 export function renderCreate(root, [id]) {
   const c = id && creationById(id);
@@ -174,6 +176,8 @@ function designer(root, c) {
       ['test', 'worksheet'].includes(c.type) ? toggle('memo', 'Memo') : null,
       c.type === 'test' ? toggle('grid', 'Cognitive-level grid') : null,
       c.type === 'test' ? toggle('cover', 'Cover page') : null,
+      ['test', 'worksheet'].includes(c.type) ? (() => { const chk = checkFor(c); return h('label', { class: 'chip', title: `Hidden instruction asks AI tools to use “${chk.word}” ${chk.n} times` }, h('input', { type: 'checkbox', checked: !!chk.on, onchange: e => { chk.on = e.target.checked; changed(); } }), `Hidden AI check (“${chk.word}”)`); })() : null,
+      ['test', 'worksheet'].includes(c.type) ? h('button', { class: 'chip', onclick: () => openChecker(checkFor(c)) }, 'Check answers') : null,
       c.type === 'cards' && d.layout === 'wordsearch' ? h('button', { class: 'chip', onclick: () => { c.meta.seed = Math.floor(Math.random() * 1e6); changed(); } }, 'New puzzle') : null));
   const aiIn = h('input', { placeholder: 'Ask AI to change it, e.g. “make it easier for Grade 8” or “add two diagram questions”', 'aria-label': 'Change with AI', onkeydown: e => { if (e.key === 'Enter') aiBtn.click(); } });
   const aiBtn = h('button', { class: 'btn', disabled: !aiReady(), title: aiUnavailableReason() || '' }, icon('spark'), 'Change');

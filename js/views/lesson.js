@@ -1,19 +1,23 @@
 // One lesson: details, generate materials (AI or template), edit them, export, attach files.
 import { state, lessonById, saveLesson, deleteLesson, subjectById, atpById, subjectLabel, addMaterial } from '../state.js';
-import { h, icon, modal, toast, busy, confirmBox, download } from '../ui.js';
+import { h, icon, modal, toast, busy, confirmBox, download, shareFile, shareText } from '../ui.js';
 import { fmtLong, minutesBetween } from '../dates.js';
-import { buildContent, lessonContext } from '../generate.js';
+import { buildContent, buildNotes, lessonContext } from '../generate.js';
 import { aiReady, aiUnavailableReason } from '../ai.js';
-import { exportLessonPlanDocx, exportWorksheetDocx, exportSlidesPptx, printLesson } from '../exporters.js';
+import { exportLessonPlanDocx, exportSlidesPptx, printLesson, lessonDocHtml, docCss, buildWorksheetDocx, buildNotesDocx, activityText } from '../exporters.js';
+import { checkFor } from '../aicheck.js';
+import { openChecker } from './checker.js';
 import { eventsOn, nextAssessment, typeOf, eventLabel } from '../events.js';
-import { creationFromLesson } from '../create/model.js';
+import { creationFromLesson, creationFromNotes } from '../create/model.js';
 import { saveCreation } from '../state.js';
 
 let tab = 'plan';
+let editing = false;
 
 export function openLesson(id) {
   const l = lessonById(id);
   if (!l) return;
+  ensurePreviewCss();
   const body = h('div', { class: 'lesson-panel' });
   const m = modal(l.title || 'Lesson', body, { wide: true, onClose: () => { if (lessonById(l.id)) saveLesson(l); } });
   const save = debounce(async () => { if (lessonById(l.id)) await saveLesson(l); }, 400);
@@ -21,68 +25,69 @@ export function openLesson(id) {
   draw();
 }
 
+function ensurePreviewCss() {
+  let st = document.getElementById('doc-preview-css');
+  if (!st) { st = document.createElement('style'); st.id = 'doc-preview-css'; document.head.append(st); }
+  st.textContent = docCss('#' + (state.settings.brandColour || '#1E3B33').replace('#', ''), '.doc-preview');
+}
+
 function panel(l, save, draw, m) {
   const s = subjectById(l.subjectId);
   const a = atpById(l.atpId);
   const period = state.timetable.periods.find(p => p.id === l.periodId);
   const ctx = lessonContext(l);
+  const c = l.content;
 
-  const dayEvents = eventsOn(l.date);
-  const nextTest = nextAssessment(l.subjectId, l.date, 21);
-  const details = h('section', { class: 'lp-details' },
+  const dayEvents = l.date ? eventsOn(l.date) : [];
+  const nextTest = l.date ? nextAssessment(l.subjectId, l.date, 21) : null;
+  const top = h('section', { class: 'lp-top' },
+    h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }),
+      !l.date ? 'Not on the planner yet: drag it from “Needs a period” onto a period.' : `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`,
+      s ? ` · ${subjectLabel(s)}${l.cls ? ' · ' + l.cls : ''}` : ''),
     (dayEvents.length || nextTest) ? h('div', { class: 'lp-events' },
       dayEvents.map(e => h('a', { class: 'ev-row', href: '#calendar/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
-      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null,
-    h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }), !l.date ? 'Not on the planner yet: drag it from “Needs a period” onto a period.' : `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`),
-    h('div', { class: 'form-grid' },
-      field('Lesson title', h('input', { value: l.title || '', oninput: e => { l.title = e.target.value; save(); m.el.querySelector('header h2').textContent = l.title; } })),
-      field('Subject', h('select', { onchange: e => { l.subjectId = e.target.value; save(); draw(); } }, state.subjects.map(x => h('option', { value: x.id, selected: x.id === l.subjectId }, subjectLabel(x))))),
-      field('Class', h('input', { value: l.cls || '', placeholder: 'e.g. 9B', oninput: e => { l.cls = e.target.value; save(); } })),
-      field('Taught', h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!l.done, onchange: e => { l.done = e.target.checked; save(); } }), 'Mark as taught')),
-    ),
-    a ? h('details', { class: 'atp-box' }, h('summary', {}, `ATP: Term ${a.term}, week ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''} · ${a.topic}`), h('pre', {}, a.details || 'No details in the ATP for this week.')) : h('p', { class: 'muted' }, 'Not linked to an ATP topic.'),
-    field('Notes for this lesson (also guides the AI)', h('textarea', { rows: 2, placeholder: 'e.g. Recap last lesson’s test, use the projector, 3 learners absent last week', oninput: e => { l.notes = e.target.value; save(); } }, l.notes || '')),
-  );
+      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null);
+
+  const details = h('details', { class: 'lp-more', open: !c },
+    h('summary', {}, 'Lesson details'),
+    h('div', { class: 'lp-details' },
+      h('div', { class: 'form-grid' },
+        field('Lesson title', h('input', { value: l.title || '', oninput: e => { l.title = e.target.value; save(); m.el.querySelector('header h2').textContent = l.title; } })),
+        field('Subject', h('select', { onchange: e => { l.subjectId = e.target.value; save(); draw(); } }, state.subjects.map(x => h('option', { value: x.id, selected: x.id === l.subjectId }, subjectLabel(x))))),
+        field('Class', h('input', { value: l.cls || '', placeholder: 'e.g. 9B', oninput: e => { l.cls = e.target.value; save(); } })),
+        field('Taught', h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!l.done, onchange: e => { l.done = e.target.checked; save(); } }), 'Mark as taught'))),
+      a ? h('details', { class: 'atp-box' }, h('summary', {}, `ATP: Term ${a.term}, week ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''} · ${a.topic}`), h('pre', {}, a.details || 'No details in the ATP for this week.')) : h('p', { class: 'muted' }, 'Not linked to an ATP topic.'),
+      field('Notes for this lesson (also guides the AI)', h('textarea', { rows: 2, placeholder: 'e.g. Recap last lesson’s test, use the projector, 3 learners absent last week', oninput: e => { l.notes = e.target.value; save(); } }, l.notes || ''))));
 
   // ---------- Generate ----------
   const reason = aiUnavailableReason();
-  const gen = h('section', { class: 'lp-generate' });
-  const genAi = h('button', { class: 'btn primary', disabled: !aiReady(), title: reason || 'Claude writes the full lesson plan, slides and worksheet with memo' }, icon('spark'), l.content ? 'Rewrite with AI' : 'Write with AI');
-  const genTpl = h('button', { class: 'btn ghost', title: 'Builds a structured draft from the ATP. Works offline.' }, icon('doc'), l.content ? 'Reset to template' : 'Use template (offline)');
+  const genAi = h('button', { class: 'btn ' + (c ? 'ghost sm' : 'primary'), disabled: !aiReady(), title: reason || 'Claude writes the lesson plan, notes, activity with memo, and slides' }, icon('spark'), c ? 'Rewrite with AI' : 'Write the lesson with AI');
+  const genTpl = h('button', { class: 'btn ghost' + (c ? ' sm' : ''), title: 'Builds a structured draft from the ATP. Works offline.' }, icon('doc'), c ? 'Reset to template' : 'Start from the ATP (offline)');
   const run = async (useAi, btn) => {
-    if (l.content && !await confirmBox('This replaces the lesson plan, slides and worksheet you have now.', 'Replace')) return;
+    if (c && !await confirmBox('This replaces the lesson plan, notes, activity and slides you have now.', 'Replace')) return;
     const done = busy(btn, useAi ? 'Writing… about a minute' : 'Building…');
-    try { l.content = await buildContent(l, { useAi }); await saveLesson(l); toast(useAi ? 'Lesson written. Check it before you use it.' : 'Template ready. Fill in the gaps.'); draw(); }
+    try { l.content = await buildContent(l, { useAi }); checkFor(l); await saveLesson(l); toast(useAi ? 'Lesson written. Check it before you use it.' : 'Template ready. Fill in the gaps.'); draw(); }
     catch (e) { toast(e.message, 'error'); }
     finally { done(); }
   };
   genAi.onclick = () => run(true, genAi);
   genTpl.onclick = () => run(false, genTpl);
-  gen.append(h('div', { class: 'row wrap' }, genAi, genTpl), reason ? h('p', { class: 'muted small' }, reason, ' ', !state.settings.apiKey ? h('a', { href: '#settings', onclick: () => m.close() }, 'Open Settings') : null) : null);
+  const gen = h('div', { class: c ? 'lp-regen row wrap' : 'lp-generate' },
+    c ? h('span', { class: 'muted small' }, c.source === 'ai' ? 'Written by AI: check facts and answers before class.' : 'Template draft: add your own content where it’s thin.') : h('p', {}, 'Make the lesson plan, learner notes, the activity with its memo, and slides in one go.'),
+    h('div', { class: 'row wrap' }, genAi, genTpl),
+    reason && !c ? h('p', { class: 'muted small' }, reason, ' ', !state.settings.apiKey ? h('a', { href: '#settings', onclick: () => m.close() }, 'Open Settings') : null) : null);
 
-  const out = [details, gen];
-
-  if (l.content) {
-    const c = l.content;
-    const exportBar = h('div', { class: 'export-bar' },
-      h('span', { class: 'muted small' }, c.source === 'ai' ? 'Written by AI: check facts and answers before class.' : 'Template draft: add your own content where it’s thin.'),
-      h('div', { class: 'row wrap' },
-        expBtn('Lesson plan', 'doc', () => exportLessonPlanDocx(l)),
-        expBtn('Slides', 'slides', () => exportSlidesPptx(l)),
-        expBtn('Worksheet + memo', 'sheet', () => exportWorksheetDocx(l, { memo: true })),
-        h('button', { class: 'btn ghost sm', onclick: () => printMenu(l) }, icon('print'), 'Print / PDF'),
-      ),
-      h('div', { class: 'row wrap' }, h('span', { class: 'muted small' }, 'Want pictures, themes or a different layout?'),
-        h('button', { class: 'btn ghost sm', onclick: async () => { const cr = await saveCreation(creationFromLesson(l, 'worksheet')); m.close(); location.hash = 'create/' + cr.id; } }, icon('pen', 16), 'Design the worksheet'),
-        h('button', { class: 'btn ghost sm', onclick: async () => { const cr = await saveCreation(creationFromLesson(l, 'slides')); m.close(); location.hash = 'create/' + cr.id; } }, icon('pen', 16), 'Design the slides')));
-    const tabs = h('div', { class: 'tabs', role: 'tablist' }, ['plan', 'slides', 'worksheet', 'files'].map(t =>
-      h('button', { role: 'tab', 'aria-selected': String(tab === t), onclick: () => { tab = t; draw(); } }, { plan: 'Lesson plan', slides: `Slides (${c.slides?.length || 0})`, worksheet: `Worksheet (${c.worksheet?.questions?.length || 0} questions)`, files: `Files (${l.materialIds?.length || 0})` }[t])));
+  const out = [top, details, gen];
+  if (c) {
+    const tabs = h('div', { class: 'tabs lp-tabs', role: 'tablist' }, [['plan', 'Lesson plan'], ['notes', 'Notes'], ['activity', 'Activity & memo'], ['slides', `Slides (${c.slides?.length || 0})`], ['files', `Files (${l.materialIds?.length || 0})`]].map(([t, label]) =>
+      h('button', { role: 'tab', 'aria-selected': String(tab === t), onclick: () => { tab = t; draw(); } }, label)));
     const pane = h('div', { class: 'tab-pane', role: 'tabpanel' });
-    if (tab === 'plan') pane.append(planEditor(c, save, ctx));
-    if (tab === 'slides') pane.append(slidesEditor(c, save, draw));
-    if (tab === 'worksheet') pane.append(worksheetEditor(c, save, draw));
+    if (tab === 'plan') pane.append(...docTab(l, 'plan', save, draw, m, ctx));
+    if (tab === 'notes') pane.append(...notesTab(l, save, draw, m));
+    if (tab === 'activity') pane.append(...activityTab(l, save, draw, m));
+    if (tab === 'slides') pane.append(h('div', { class: 'doc-bar' }, expBtn('Download PowerPoint', 'slides', () => exportSlidesPptx(l)), designBtn(l, 'slides', m)), slidesEditor(c, save, draw));
     if (tab === 'files') pane.append(filesPane(l, save, draw));
-    out.push(exportBar, tabs, pane);
+    out.push(tabs, pane);
   } else {
     out.push(h('div', { class: 'tab-pane' }, filesPane(l, save, draw)));
   }
@@ -94,21 +99,97 @@ function panel(l, save, draw, m) {
   return out;
 }
 
+const viewEditSeg = draw => h('div', { class: 'seg', role: 'group', 'aria-label': 'View or edit' },
+  h('button', { 'aria-pressed': String(!editing), onclick: () => { editing = false; draw(); } }, 'View'),
+  h('button', { 'aria-pressed': String(editing), onclick: () => { editing = true; draw(); } }, icon('pen', 14), 'Edit'));
+const preview = html => { const d = h('div', { class: 'doc-preview' }); d.innerHTML = html; return d; };
+const designBtn = (l, kind, m) => h('button', { class: 'btn ghost sm', title: 'Pictures, themes and layout in Create', onclick: async () => { const cr = await saveCreation(kind === 'notes' ? creationFromNotes(l) : creationFromLesson(l, kind)); m.close(); location.hash = 'create/' + cr.id; } }, icon('pen', 16), 'Design it');
+
+function docTab(l, what, save, draw, m, ctx) {
+  return [
+    h('div', { class: 'doc-bar' }, viewEditSeg(draw),
+      expBtn('Download (Word)', 'download', () => exportLessonPlanDocx(l)),
+      h('button', { class: 'btn ghost sm', onclick: () => printLesson(l, 'plan') }, icon('print'), 'Print / PDF'),
+      shareBtn('Share', () => exportLessonPlanDocx(l, { get: true }), l.title)),
+    editing ? planEditor(l.content, save, ctx) : preview(lessonDocHtml(l, 'plan')),
+  ];
+}
+
+function notesTab(l, save, draw, m) {
+  const c = l.content;
+  if (!c.notes) {
+    const ai = h('button', { class: 'btn primary', disabled: !aiReady(), title: aiUnavailableReason() || '' }, icon('spark'), 'Write the notes with AI');
+    const tpl = h('button', { class: 'btn ghost' }, icon('doc'), 'Start from the ATP (offline)');
+    const go = async (useAi, b) => { const done = busy(b, useAi ? 'Writing…' : 'Building…'); try { c.notes = await buildNotes(l, { useAi }); await saveLesson(l); draw(); } catch (e) { toast(e.message, 'error'); } finally { done(); } };
+    ai.onclick = () => go(true, ai); tpl.onclick = () => go(false, tpl);
+    return [h('div', { class: 'empty-state' }, h('p', {}, 'Summarised notes learners keep and revise from. Download, print or share them with the class.'), h('div', { class: 'row wrap' }, ai, tpl))];
+  }
+  return [
+    h('div', { class: 'doc-bar' }, viewEditSeg(draw),
+      expBtn('Download (Word)', 'download', async () => { const f = await buildNotesDocx(l); download(f.blob, f.name); }),
+      h('button', { class: 'btn ghost sm', onclick: () => printLesson(l, 'notes') }, icon('print'), 'Print / PDF'),
+      shareBtn('Share with learners', () => buildNotesDocx(l), c.notes.title || l.title),
+      designBtn(l, 'notes', m)),
+    editing ? notesEditor(c.notes, c, save, draw) : preview(lessonDocHtml(l, 'notes')),
+  ];
+}
+
+function activityTab(l, save, draw, m) {
+  const c = l.content;
+  const chk = checkFor(l);
+  const checkPanel = h('details', { class: 'aic-panel', open: !!chk.on },
+    h('summary', {}, icon('spark', 14), ` Hidden AI check: ${chk.on ? `on (“${chk.word}” × ${chk.n})` : 'off'}`),
+    h('p', { class: 'small' }, 'The learner copy (Word, print and PDF) carries an instruction in invisible text. If a learner pastes the questions into an AI tool, its answers will use the word below. It is a clue to follow up, not proof: a learner may type the questions out, some AI tools ignore hidden text, and the plain-text message has no check.'),
+    h('div', { class: 'row wrap' },
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!chk.on, onchange: e => { chk.on = e.target.checked; save(); draw(); } }), 'Add the check to the learner copy'),
+      h('label', { class: 'inline' }, 'Word', h('input', { value: chk.word, class: 'w-word', oninput: e => { chk.word = e.target.value.trim().split(/\s+/)[0] || chk.word; save(); } })),
+      h('label', { class: 'inline' }, 'Times', h('input', { type: 'number', min: 1, max: 20, class: 'num', value: chk.n, oninput: e => { chk.n = Math.max(1, +e.target.value || 6); save(); } })),
+      h('button', { class: 'btn sm', onclick: () => openChecker(chk) }, icon('check', 16), 'Check a learner’s answers')),
+    h('p', { class: 'hint' }, 'Tip: a screen reader may read the hidden text aloud. Switch the check off for classes where learners use one.'));
+  return [
+    h('div', { class: 'doc-bar' }, viewEditSeg(draw),
+      shareBtn('Share with learners', () => buildWorksheetDocx(l, 'learner'), c.worksheet?.title || l.title, 'primary'),
+      h('button', { class: 'btn ghost sm', onclick: () => shareText(activityText(l), c.worksheet?.title || l.title) }, icon('paper', 16), 'Send as a message'),
+      shareBtn('Share memo', () => buildWorksheetDocx(l, 'memo'), 'Memo: ' + (c.worksheet?.title || l.title)),
+      h('details', { class: 'more-menu' }, h('summary', { class: 'btn ghost sm' }, 'More'),
+        h('div', { class: 'menu' },
+          expBtn('Download learner copy (Word)', 'download', async () => { const f = await buildWorksheetDocx(l, 'learner'); download(f.blob, f.name); }),
+          expBtn('Download memo (Word)', 'download', async () => { const f = await buildWorksheetDocx(l, 'memo'); download(f.blob, f.name); }),
+          h('button', { class: 'btn ghost sm', onclick: () => printLesson(l, 'worksheet') }, icon('print'), 'Print learner copy'),
+          h('button', { class: 'btn ghost sm', onclick: () => printLesson(l, 'memo') }, icon('print'), 'Print memo'),
+          designBtn(l, 'worksheet', m)))),
+    checkPanel,
+    editing ? worksheetEditor(c, save, draw)
+      : h('div', { class: 'act-views' }, h('h3', {}, 'Learner copy'), preview(lessonDocHtml(l, 'worksheet')), h('h3', {}, 'Memo (teacher copy)'), preview(lessonDocHtml(l, 'memo'))),
+  ];
+}
+
+function shareBtn(label, build, title, kind = 'ghost') {
+  const b = h('button', { class: `btn ${kind} sm` }, icon('paper', 16), label);
+  b.onclick = async () => { const done = busy(b, 'Preparing…'); try { const f = await build(); done(); await shareFile(f, title); } catch (e) { done(); toast(e.message, 'error'); } };
+  return b;
+}
+
+function notesEditor(n, c, save, draw) {
+  return h('div', { class: 'editor' },
+    field('Title', h('input', { value: n.title || '', oninput: e => { n.title = e.target.value; save(); } })),
+    field('Introduction', ta(n.intro, v => { n.intro = v; save(); }, 2)),
+    h('div', { class: 'stack' }, (n.sections ||= []).map((sct, i) => h('div', { class: 'phase' },
+      h('div', { class: 'row' }, h('input', { class: 'ph-name', value: sct.heading, 'aria-label': 'Heading', oninput: e => { sct.heading = e.target.value; save(); } }),
+        h('button', { class: 'icon-btn', 'aria-label': 'Remove section', onclick: () => { n.sections.splice(i, 1); save(); draw(); } }, icon('trash', 16))),
+      field('Explanation', ta(sct.text, v => { sct.text = v; save(); }, 3, 'Blank line between paragraphs')),
+      field('Bullets (one per line)', ta(linesIn(sct.bullets), v => { sct.bullets = linesOut(v); save(); }, 2))))),
+    h('button', { class: 'btn ghost', onclick: () => { n.sections.push({ heading: 'New section', text: '', bullets: [] }); save(); draw(); } }, icon('plus'), 'Add a section'),
+    field('Key points (one per line)', ta(linesIn(n.keyPoints), v => { n.keyPoints = linesOut(v); save(); }, 3)),
+    field('Key vocabulary (term: meaning, one per line)', ta((c.vocabulary || []).map(v => `${v.term}: ${v.meaning}`).join('\n'), v => { c.vocabulary = linesOut(v).map(x => { const i = x.indexOf(':'); return i > 0 ? { term: x.slice(0, i).trim(), meaning: x.slice(i + 1).trim() } : { term: x, meaning: '' }; }); save(); }, 2)),
+  );
+}
+
 const expBtn = (label, ic, fn) => {
-  const b = h('button', { class: 'btn sm' }, icon(ic), label);
+  const b = h('button', { class: 'btn ghost sm' }, icon(ic), label);
   b.onclick = async () => { const done = busy(b, 'Saving…'); try { await fn(); } catch (e) { console.error(e); toast('Export failed: ' + e.message, 'error'); } finally { done(); } };
   return b;
 };
-
-function printMenu(l) {
-  const m = modal('Print or save as PDF', [
-    h('p', { class: 'muted' }, 'Opens a print-ready page. Choose “Save as PDF” as the printer to get a PDF.'),
-    h('div', { class: 'stack' },
-      h('button', { class: 'btn', onclick: () => { printLesson(l, 'plan'); m.close(); } }, icon('doc'), 'Lesson plan'),
-      h('button', { class: 'btn', onclick: () => { printLesson(l, 'worksheet'); m.close(); } }, icon('sheet'), 'Worksheet (learner copy)'),
-      h('button', { class: 'btn', onclick: () => { printLesson(l, 'worksheet+memo'); m.close(); } }, icon('sheet'), 'Worksheet with memo')),
-  ]);
-}
 
 // ---------- Editors ----------
 function field(label, input, hint) {

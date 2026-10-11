@@ -483,6 +483,33 @@ tr.warn-row td { color: var(--warn); font-weight: 700; }
 .toast-act { background: transparent; color: var(--marker); border: 1px solid currentColor; border-radius: 6px; padding: .2rem .7rem; font-weight: 700; cursor: pointer; }
 
 /* ---------- Lesson panel ---------- */
+.lp-top { display: grid; gap: .5rem; }
+.lp-top .meta-line { margin: 0; }
+.lp-more { border: 1px solid var(--line); border-radius: var(--radius-m); padding: .5rem .9rem; background: var(--sheet); }
+.lp-more summary { cursor: pointer; font-weight: 700; }
+.lp-more[open] summary { margin-bottom: .75rem; }
+.lp-regen { justify-content: space-between; align-items: center; gap: .5rem; }
+.lp-tabs { margin-top: .25rem; }
+.doc-bar { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-bottom: .75rem; }
+.doc-bar .seg { margin-right: .5rem; }
+.doc-bar .seg button { display: inline-flex; gap: .3rem; align-items: center; }
+.doc-preview { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 1.5rem 1.75rem; box-shadow: 0 2px 10px rgba(0,0,0,.06); max-width: 52rem; }
+.act-views h3 { margin: 1rem 0 .4rem; font-size: .95rem; color: var(--ink-2); }
+.empty-state { padding: 1.5rem; border: 2px dashed var(--line); border-radius: var(--radius-m); display: grid; gap: .75rem; justify-items: start; }
+.more-menu { position: relative; }
+.more-menu summary { list-style: none; cursor: pointer; }
+.more-menu summary::-webkit-details-marker { display: none; }
+.more-menu .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-s); box-shadow: var(--shadow-lift); padding: .4rem; display: grid; gap: .2rem; min-width: 15rem; }
+.more-menu .menu .btn { justify-content: flex-start; border-color: transparent; }
+.aic-panel { border: 1px solid #D9CFF2; background: #F7F4FE; border-radius: var(--radius-s); padding: .5rem .8rem; margin-bottom: .75rem; }
+.aic-panel summary { cursor: pointer; font-weight: 700; display: flex; gap: .3rem; align-items: center; color: #5B3FA8; }
+.aic-panel[open] summary { margin-bottom: .4rem; }
+.aic-panel .row { gap: .5rem 1rem; }
+.w-word { width: 9rem; }
+.aic-result { border-left: 5px solid var(--ok); background: #EEF7F1; padding: .6rem .9rem; border-radius: 4px; margin-top: .75rem; }
+.aic-result.hit { border-left-color: var(--margin); background: #FDF1F0; }
+.aic-result p { margin: .3rem 0 0; }
+
 .lesson-panel { display: grid; gap: 1rem; }
 .meta-line { display: flex; align-items: center; gap: .5rem; color: var(--ink-2); margin-bottom: .75rem; }
 .swatch { width: .9rem; height: .9rem; border-radius: 3px; }

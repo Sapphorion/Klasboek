@@ -55,6 +55,12 @@ function view() {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.autoAdjust, onchange: e => saveSettings({ autoAdjust: e.target.checked }) }),
       'When teaching time is lost or comes back, move lessons without asking first (you can still undo)')));
 
+  // ---------- AI check ----------
+  page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Hidden AI check'),
+    h('p', { class: 'muted small' }, 'Learner copies of activities, worksheets and tests can carry an invisible instruction that asks AI tools to use a chosen word several times. If the word shows up in a learner’s answers, the questions were probably pasted into an AI tool. Each lesson gets its own word; you can change it on the Activity tab.'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiCheckDefault !== false, onchange: e => saveSettings({ aiCheckDefault: e.target.checked }) }), 'Add the check to new activities'),
+    field('How many times the word should appear', h('input', { type: 'number', min: 1, max: 20, value: s.aiCheckCount || 6, class: 'num', onchange: e => saveSettings({ aiCheckCount: Math.max(1, +e.target.value || 6) }) }))));
+
   // ---------- AI ----------
   const keyIn = h('input', { type: 'password', value: s.apiKey, placeholder: 'sk-ant-…', autocomplete: 'off', onchange: e => saveSettings({ apiKey: e.target.value.trim() }) });
   const testBtn = h('button', { class: 'btn ghost sm' }, 'Test the key');
