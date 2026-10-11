@@ -7,7 +7,7 @@ import { aiTell, aiReady } from '../ai.js';
 import { afterTeachingChange } from '../adjust.js';
 import { EVENT_TYPES } from '../events.js';
 
-export function tellBox(weekStart, days) {
+export function tellBox(weekStart, days, { onDone } = {}) {
   const input = h('input', { placeholder: 'Tell the planner what’s happening, e.g. “Monday Spring School, Wednesday and Thursday prize giving”', 'aria-label': 'Tell the planner what’s happening this week', onkeydown: e => { if (e.key === 'Enter') go.click(); } });
   const go = h('button', { class: 'btn' }, icon('wand'), 'Update the week');
   go.onclick = async () => {
@@ -25,7 +25,7 @@ export function tellBox(weekStart, days) {
       } catch (e) { toast(e.message, 'error'); } finally { done(); }
     }
     if (!r.items.length && !r.normal.length) { toast('I couldn’t find any days in that. Try “Monday prize giving” or “14 Oct sports day”.', 'warn'); return; }
-    confirmTell(r, () => { input.value = ''; });
+    confirmTell(r, () => { input.value = ''; onDone?.(); });
   };
   return h('div', { class: 'tell-box' }, icon('pen', 18), input, go);
 }
@@ -66,4 +66,18 @@ function confirmTell(r, onDone) {
       } }, 'Add and adjust the planner') : h('button', { class: 'btn primary', onclick: () => { m.close(); onDone(); } }, 'OK')),
   );
   draw();
+}
+
+// The same box in a pop-up, opened from the planner toolbar.
+export function openTell(weekStart, days) {
+  let m;
+  const box = tellBox(weekStart, days, { onDone: () => m.close() });
+  m = modal('Tell the planner', [
+    h('p', { class: 'muted' }, 'Say what’s different in plain words. Lessons that lose their period move along to the next one.'),
+    box,
+    h('ul', { class: 'tell-examples muted small' },
+      ['Monday Spring School, Tuesday normal, Wednesday and Thursday prize giving', 'Friday half day', '14 Oct sports day', 'Lose P6 and P7 on Thursday for assembly'].map(t =>
+        h('li', {}, h('button', { class: 'link', onclick: () => { const i = box.querySelector('input'); i.value = t; i.focus(); } }, `“${t}”`)))),
+  ], { wide: true });
+  requestAnimationFrame(() => box.querySelector('input')?.focus());
 }

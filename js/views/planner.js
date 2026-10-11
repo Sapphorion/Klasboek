@@ -1,25 +1,34 @@
 // Week planner: timetable periods × school days, ATP topics to drag in, lessons to open.
-import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings } from '../state.js';
+import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings, saveAtpItem } from '../state.js';
 import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
 import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel, noticesDueSoon, periodBlocked, blockingEventFor } from '../events.js';
-import { editEvent, openEvent } from './calendar.js';
+import { editEvent, openEvent, calendarBody, setCalendarDate } from './calendar.js';
 import { dueText } from './notices.js';
 import { openTermPlanUpload } from './termplan.js';
 import { ttCellAt, ttDayFor, posLabel, changedOn, swapsOn } from '../ttday.js';
 import { openTtChanges } from './ttchanges.js';
-import { tellBox } from './tellbox.js';
+import { openTell } from './tellbox.js';
+import { openDayMenu } from './daymenu.js';
+import { markDone } from '../adjust.js';
 
 let weekStart = mondayOf(today());
 let trayScope = 'week';      // 'week' | 'term'
 let traySubject = '';        // filter
 let picked = null;           // tap-to-place: { atpId } or { lessonId }
 
+let viewMode = 'week';       // 'week' | 'month'
+let showDone = false;        // show topics marked "done already" in the tray
+
 let rootEl = null;
-export function renderPlanner(root) {
+// #planner, #planner/week/DATE, #planner/month, #planner/month/DATE
+export function renderPlanner(root, [mode, date] = []) {
   rootEl = root;
+  viewMode = mode === 'month' ? 'month' : 'week';
+  if (viewMode === 'month') setCalendarDate(date);
+  else if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) weekStart = mondayOf(date);
   const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events', 'notices'].includes(w)) rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
@@ -32,7 +41,38 @@ function weekDays() {
 const dayIdxOf = date => state.timetable.days.indexOf(WEEK[weekdayIndex(date)]);
 const cellKey = (dayIdx, pid) => `${dayIdx}|${pid}`;
 
+const modeSwitch = () => h('div', { class: 'seg view-switch', role: 'group', 'aria-label': 'Planner view' },
+  h('button', { 'aria-pressed': String(viewMode === 'week'), onclick: () => { if (viewMode !== 'week') location.hash = 'planner/week/' + weekStart; } }, 'Week'),
+  h('button', { 'aria-pressed': String(viewMode === 'month'), onclick: () => { if (viewMode !== 'month') location.hash = 'planner/month/' + weekStart; } }, 'Month'));
+
+function monthView() {
+  const wrap = h('div', { class: 'planner month-mode' });
+  wrap.append(h('div', { class: 'toolbar' },
+    h('div', { class: 'week-nav' }, h('div', { class: 'week-title' }, h('h1', {}, 'The school year'), h('span', { class: 'muted' }, 'Tests, holidays and events. Tap a day to change it, double-tap to plan that week.'))),
+    h('div', { class: 'row wrap' }, modeSwitch(),
+      h('button', { class: 'btn', onclick: () => openTell(weekStart, weekDays()) }, icon('pen'), 'Tell the planner')),
+  ));
+  wrap.append(calendarBody({
+    onOpenWeek: d => { location.hash = 'planner/week/' + mondayOf(d); },
+    onDayMenu: d => openDayMenu(d, mondayOf(d)),
+  }));
+  return wrap;
+}
+
+function moreMenu(tw, days) {
+  const item = (ic, label, fn) => h('button', { role: 'menuitem', onclick: e => { e.target.closest('details').open = false; fn(); } }, icon(ic, 18), label);
+  return h('details', { class: 'more-menu' },
+    h('summary', { class: 'btn ghost', 'aria-label': 'More planner options' }, icon('grid'), 'More'),
+    h('div', { class: 'more-list', role: 'menu' },
+      item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
+      item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),
+      item('month', 'Upload year planner or test timetable', () => { location.hash = 'planner/month/' + weekStart; }),
+      item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
+    ));
+}
+
 function view() {
+  if (viewMode === 'month') return monthView();
   const tw = termWeekOf(weekStart) || termWeekOf(addDays(weekStart, 4));
   const days = weekDays();
   const wrap = h('div', { class: 'planner' });
@@ -49,15 +89,15 @@ function view() {
       weekStart !== mondayOf(today()) ? h('button', { class: 'btn ghost sm', onclick: () => { weekStart = mondayOf(today()); rerender(); } }, 'This week') : null,
       termJump(tw),
     ),
-    h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: autoPlan, title: 'Place this week’s ATP topics into your timetable slots' }, icon('wand'), 'Auto-plan week'),
-      h('button', { class: 'btn ghost', onclick: () => openTtChanges(weekStart) }, icon('swap'), 'Timetable changes'),
-      h('button', { class: 'btn ghost', onclick: () => openTermPlanUpload(tw?.term) }, icon('upload'), 'Upload term plan'),
-      h('button', { class: 'btn ghost', onclick: () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error')) }, icon('download'), 'Week plan (.docx)'),
+    h('div', { class: 'row wrap' },
+      modeSwitch(),
+      h('button', { class: 'btn', onclick: () => openTell(weekStart, days), title: 'Say what’s different this week, e.g. “Wednesday prize giving”' }, icon('pen'), 'Tell the planner'),
+      h('button', { class: 'btn ghost', onclick: autoPlan, title: 'Place this week’s ATP topics into your timetable slots' }, icon('wand'), 'Auto-plan week'),
+      moreMenu(tw, days),
     ),
   ));
 
-  wrap.append(tellBox(weekStart, days), noticeBanner(), comingUp());
+  wrap.append(weekStrip());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
@@ -73,8 +113,8 @@ function view() {
     const evs = eventsOn(d.date);
     const blocked = noTeachingOn(d.date);
     return h('div', { class: 'day-head' + (isToday ? ' today' : '') + (blocked ? ' blocked' : ''), role: rows ? 'rowheader' : 'columnheader' },
-      h('div', { class: 'dh-top' }, h('strong', {}, d.label), h('span', {}, fmt(d.date)),
-        h('button', { class: 'add-note', title: 'Add a note or reminder', 'aria-label': `Add a note or reminder on ${d.label} ${fmt(d.date)}`, onclick: () => editEvent({ date: d.date, type: 'reminder' }) }, icon('plus', 14))),
+      h('button', { class: 'dh-top', title: 'Change this day: no school, lost periods, a test, a note…', 'aria-label': `${d.label} ${fmt(d.date)}. Change this day`, onclick: () => openDayMenu(d.date, weekStart) },
+        h('strong', {}, d.label), h('span', {}, fmt(d.date)), h('span', { class: 'dh-edit', 'aria-hidden': 'true' }, icon('pen', 13))),
       (() => {
         const pos = ttDayFor(d.date);
         const changed = changedOn(d.date);
@@ -84,7 +124,7 @@ function view() {
           (changed && pos.source ? 'Follows ' : '') + posLabel(pos) + (sw ? ` · ${sw} swap${sw > 1 ? 's' : ''}` : ''));
       })(),
       evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => openEvent(e) }, h('span', {}, e.title))),
-        evs.length > 3 ? h('a', { class: 'more', href: '#calendar/' + d.date }, `+${evs.length - 3}`) : null) : null);
+        evs.length > 3 ? h('button', { class: 'more', onclick: () => openDayMenu(d.date, weekStart) }, `+${evs.length - 3}`) : null) : null);
   };
   const periodHead = p => h('div', { class: 'period-head', role: rows ? 'columnheader' : 'rowheader' }, h('strong', {}, p.label), p.start ? h('span', {}, p.start + (rows && p.end ? '–' + p.end : '')) : null);
   grid.append(h('div', { class: 'corner' }, rows ? h('button', { class: 'rotate', title: 'Show days across the top', 'aria-label': 'Show days across the top', onclick: () => saveSettings({ plannerLayout: 'days-cols' }) }, icon('swap', 16)) : h('button', { class: 'rotate', title: 'Show days down the side', 'aria-label': 'Show days down the side', onclick: () => saveSettings({ plannerLayout: 'days-rows' }) }, icon('swap', 16))));
@@ -108,23 +148,21 @@ function rerender() {
   const g = rootEl.querySelector('.grid-scroll'); if (g) g.scrollLeft = sc;
 }
 
-function noticeBanner() {
-  const due = noticesDueSoon(7);
-  if (!due.length) return h('span');
-  return h('div', { class: 'notice-banner', role: 'status' }, icon('flag', 18),
-    h('div', {}, due.slice(0, 3).map(n => {
-      const it = n.items || []; const ready = it.filter(i => i.done).length;
-      return h('a', { href: '#moderation/notice/' + n.id }, h('strong', {}, n.title), ` · ${dueText(n)}${it.length ? ` · ${ready} of ${it.length} ready` : ''}`);
-    })));
-}
-
-function comingUp() {
-  const list = upcoming({ from: today(), days: 21, limit: 5 });
-  if (!list.length) return h('span');
-  const rel = date => { const n = Math.round((new Date(date) - new Date(today())) / 864e5); return n <= 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 7 ? fmt(date, { weekday: 'short' }) : fmt(date); };
-  return h('div', { class: 'coming-up', 'aria-label': 'Coming up' }, h('strong', {}, 'Coming up'),
-    list.map(e => h('a', { class: 'ev-chip', href: e.notice ? '#moderation/notice/' + e.notice : '#calendar/' + e.date, style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label },
-      h('span', { class: 'when' }, rel(e.date < today() ? today() : e.date)), h('span', {}, e.title))));
+// This week and next week at a glance: tests, deadlines, events, moderation.
+function weekStrip() {
+  const col = (label, from) => {
+    const list = upcoming({ from, days: 6, limit: 8 }).filter(e => (e.endDate || e.date) >= from);
+    return h('div', { class: 'ws-col' }, h('h3', {}, label),
+      list.length ? h('ul', {}, list.map(e => h('li', {},
+        h('button', { class: 'ev-chip', style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label, onclick: () => e.notice ? location.hash = 'moderation/notice/' + e.notice : openEvent(e) },
+          h('span', { class: 'when' }, e.date < from ? 'Ongoing' : fmt(e.date, { weekday: 'short', day: 'numeric' })),
+          h('span', {}, e.title, e.notes && e.notice ? h('span', { class: 'muted' }, ' · ' + e.notes) : null))))) :
+        h('p', { class: 'muted small' }, 'Nothing on the calendar.'));
+  };
+  return h('section', { class: 'week-strip', 'aria-label': 'What’s coming' },
+    col(weekStart === mondayOf(today()) ? 'This week' : `Week of ${fmt(weekStart)}`, weekStart),
+    col('Next week', addDays(weekStart, 7)),
+    h('button', { class: 'ws-add btn ghost sm', onclick: () => editEvent({ date: weekStart < today() && today() < addDays(weekStart, 7) ? today() : weekStart, type: 'test' }) }, icon('plus', 16), 'Test or deadline'));
 }
 
 function cycleBadge(tw) {
@@ -196,6 +234,8 @@ function lessonChip(l) {
     h('span', { class: 'l-title' }, l.title || a?.topic || 'Untitled'),
     h('span', { class: 'l-flags' }, hasContent ? h('span', { class: 'flag', title: 'Materials ready' }, icon('doc', 12), l.content.source === 'ai' ? 'AI' : 'Draft') : null, l.materialIds?.length ? h('span', { class: 'flag', title: 'Attached files' }, icon('clip', 12), l.materialIds.length) : null, l.done ? h('span', { class: 'flag' }, icon('check', 12), 'Taught') : null, ...assessmentsForLesson(l).slice(0, 1).map(e => h('span', { class: 'flag assess', title: eventLabel(e) }, icon('flag', 12), e.type === 'exam' ? 'Exam' : 'Test'))),
   );
+  if (l.date) chip.append(h('button', { class: 'tick no-drag', 'aria-pressed': String(!!l.done), title: l.done ? 'Taught. Tap to undo.' : 'Mark as taught', 'aria-label': (l.done ? 'Taught: undo ' : 'Mark as taught: ') + (l.title || ''),
+    onclick: async e => { e.stopPropagation(); l.done = !l.done; await saveLesson(l); } }, icon('check', 14)));
   makeDraggable(chip, { lessonId: l.id });
   chip.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLesson(l.id); }
@@ -216,7 +256,7 @@ function tray(tw) {
     subjects.length > 1 ? h('select', { class: 'sm', 'aria-label': 'Subject', onchange: e => { traySubject = e.target.value; rerender(); } },
       h('option', { value: '' }, 'All subjects'), subjects.map(s => h('option', { value: s.id, selected: s.id === traySubject }, subjectLabel(s)))) : null,
   ));
-  const waiting = state.lessons.filter(l => !l.date);
+  const waiting = state.lessons.filter(l => !l.date && !l.done);
   if (waiting.length) box.append(h('div', { class: 'needs-period' },
     h('h3', {}, `Needs a period (${waiting.length})`),
     h('p', { class: 'muted small' }, 'These were moved off when teaching time was lost and didn’t fit before the end of term. Drag one onto a period.'),
@@ -225,8 +265,12 @@ function tray(tw) {
   if (!subjects.length) list.append(h('p', { class: 'empty' }, 'Add a subject and upload its ATP to see topics here. ', h('a', { href: '#subjects' }, 'Add a subject')));
   else if (!tw) list.append(h('p', { class: 'empty' }, 'This week is a school holiday. Use Jump to choose a term.'));
   else {
-    const items = state.atp.filter(a => (!traySubject || a.subjectId === traySubject) && a.term === tw.term && (trayScope === 'term' || (tw.week >= a.week && tw.week <= (a.weekEnd || a.week))));
-    if (!items.length) list.append(h('p', { class: 'empty' }, trayScope === 'week' ? `No ATP topics for term ${tw.term} week ${tw.week}. Try Whole term, or check the ATP on the Subjects page.` : 'No ATP topics for this term yet.'));
+    const all = state.atp.filter(a => (!traySubject || a.subjectId === traySubject) && a.term === tw.term && (trayScope === 'term' || (tw.week >= a.week && tw.week <= (a.weekEnd || a.week))));
+    const doneN = all.filter(a => a.done).length;
+    const items = showDone ? all : all.filter(a => !a.done);
+    if (doneN) list.append(h('button', { class: 'link small done-toggle', onclick: () => { showDone = !showDone; rerender(); } }, showDone ? `Hide ${doneN} done already` : `${doneN} done already · show`));
+    if (!items.length && doneN && !showDone) list.append(h('p', { class: 'empty' }, trayScope === 'week' ? 'Everything for this week is done already. Auto-plan will carry on with the next topics, or choose Whole term.' : 'Everything this term is done already.'));
+    else if (!items.length) list.append(h('p', { class: 'empty' }, trayScope === 'week' ? `No ATP topics for term ${tw.term} week ${tw.week}. Try Whole term, or check the ATP on the Subjects page.` : 'No ATP topics for this term yet.'));
     for (const a of items) list.append(atpCard(a, tw));
   }
   box.append(list, h('p', { class: 'tray-tip muted' }, 'Drag a topic onto a period, or tap it and then tap a period. Double-click an empty period for a lesson that isn’t in the ATP. Drag a lesson back here to unplan it.'));
@@ -235,16 +279,29 @@ function tray(tw) {
 
 function atpCard(a, tw) {
   const s = subjectById(a.subjectId);
-  const planned = state.lessons.filter(l => l.atpId === a.id).length;
-  const card = h('div', { class: 'card' + (picked?.atpId === a.id ? ' picked' : ''), 'data-atp': a.id, tabindex: 0, role: 'button', style: { '--subj': s?.colour || '#777' }, 'aria-label': `${s?.name}: ${a.topic}. ${planned} lessons planned. Press Enter to pick up.` },
+  const planned = state.lessons.filter(l => l.atpId === a.id && l.date).length;
+  const card = h('div', { class: 'card' + (picked?.atpId === a.id ? ' picked' : '') + (a.done ? ' is-done' : ''), 'data-atp': a.id, tabindex: 0, role: 'button', style: { '--subj': s?.colour || '#777' }, 'aria-label': `${s?.name}: ${a.topic}. ${planned} lessons planned. Press Enter to pick up.` },
     h('div', { class: 'c-top' }, h('span', { class: 'c-subj' }, subjectLabel(s)), h('span', { class: 'c-week' }, `Wk ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''}`)),
     h('div', { class: 'c-topic' }, a.topic),
     a.details ? h('div', { class: 'c-details' }, a.details.split('\n').slice(0, 2).join(' · ')) : null,
-    h('div', { class: 'c-count' + (planned ? ' has' : '') }, planned ? `${planned} lesson${planned > 1 ? 's' : ''} planned` : 'Not planned yet'),
+    h('div', { class: 'c-foot' },
+      h('span', { class: 'c-count' + (planned ? ' has' : '') }, a.done ? 'Done already' : planned ? `${planned} lesson${planned > 1 ? 's' : ''} planned` : 'Not planned yet'),
+      a.done
+        ? h('button', { class: 'c-act no-drag', onclick: () => setTopicDone(a, false) }, 'Not done')
+        : h('button', { class: 'c-act no-drag', title: 'Covered already (e.g. revision done earlier). Its lessons come off the plan and the next ones move up.', onclick: () => setTopicDone(a, true) }, icon('check', 14), 'Done already')),
   );
   makeDraggable(card, { atpId: a.id });
   card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picked = picked?.atpId === a.id ? null : { atpId: a.id }; rerender(); } });
   return card;
+}
+
+async function setTopicDone(a, done) {
+  if (!done) { a.done = false; await saveAtpItem(a); toast(`“${a.topic}” is back in the list to plan.`); return; }
+  const lessons = state.lessons.filter(l => l.atpId === a.id && !l.done);
+  a.done = true; await saveAtpItem(a);
+  const onUndo = async () => { a.done = false; await saveAtpItem(a); };
+  if (lessons.length) await markDone(lessons, { label: `“${a.topic}” done already`, onUndo });
+  else toast(`“${a.topic}” marked as done already. Auto-plan will skip it.`, 'ok', { action: { label: 'Undo', run: async () => { await onUndo(); toast('Undone.'); } } });
 }
 
 function pickedLabel() {
@@ -257,7 +314,7 @@ function pickedLabel() {
 function makeDraggable(el, payload) {
   let start = null, ghost = null, over = null, pid = null;
   el.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.target.closest('.no-drag')) return;
     start = { x: e.clientX, y: e.clientY }; pid = e.pointerId;
   });
   el.addEventListener('pointermove', e => {
@@ -368,7 +425,14 @@ async function autoPlan() {
   for (const [, slots] of groups) {
     const { subjectId } = slots[0];
     const twFirst = termWeekOf(slots[0].date);
-    const items = state.atp.filter(a => a.subjectId === subjectId && a.term === twFirst.term && twFirst.week >= a.week && twFirst.week <= (a.weekEnd || a.week));
+    let items = state.atp.filter(a => a.subjectId === subjectId && a.term === twFirst.term && twFirst.week >= a.week && twFirst.week <= (a.weekEnd || a.week));
+    const weekHad = items.length;
+    items = items.filter(a => !a.done);
+    if (!items.length && weekHad) {
+      // This week's work is done already: carry on with the next topics that aren't.
+      const next = state.atp.filter(a => a.subjectId === subjectId && a.term === twFirst.term && !a.done && a.week > twFirst.week).sort((x, y) => x.week - y.week || (x.order || 0) - (y.order || 0));
+      if (next.length) items = next.filter(a => a.week === next[0].week);
+    }
     if (!items.length) { missing.push(subjectById(subjectId)?.name); continue; }
     // Continue from what this class already has planned this week.
     slots.forEach((s, i) => {

@@ -13,17 +13,24 @@ let selected = today();
 let mode = 'month';
 const hidden = new Set(); // event types filtered out
 
+// The calendar now lives inside the planner (Month view). Old links redirect there.
 export function renderCalendar(root, [date]) {
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) { selected = date; month = date.slice(0, 7); }
-  const draw = () => root.replaceChildren(view());
-  const off = onChange(w => { if (['events', 'subjects', 'settings', 'notices'].includes(w)) draw(); });
-  draw();
-  return off;
+  location.replace('#planner/month' + (date ? '/' + date : ''));
+  return null;
+}
+
+let host = null, hostOpts = {};
+export function setCalendarDate(date) { if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) { selected = date; month = date.slice(0, 7); } }
+// Month view body, embedded in the planner. opts.onOpenWeek(date), opts.onDayMenu(date)
+export function calendarBody(opts = {}) {
+  hostOpts = opts;
+  host = h('div', { class: 'cal-embed' });
+  host.append(view());
+  return host;
 }
 
 function view() {
-  const page = h('div', { class: 'page cal-page' }, h('header', { class: 'page-head' }, h('h1', {}, 'School calendar'),
-    h('p', { class: 'muted' }, 'Upload your school’s year planner and test or exam timetables. Holidays block off teaching days in the planner, and tests show on your lessons.')));
+  const page = h('div', { class: 'cal-page' });
 
   const status = h('div', { 'aria-live': 'polite' });
   const upload = kind => dropZone({
@@ -60,7 +67,7 @@ function view() {
   return page;
 }
 
-function rerender() { const m = document.getElementById('main'); if (m) m.replaceChildren(view()); }
+function rerender() { if (host?.isConnected) host.replaceChildren(view()); }
 
 const visible = list => list.filter(e => !hidden.has(e.type));
 
@@ -81,13 +88,14 @@ function monthGrid(y, m) {
       'aria-label': `${fmtLong(d)}${evs.length ? ', ' + evs.length + ' event' + (evs.length > 1 ? 's' : '') : ''}${!school && wd < 5 ? ', no school' : ''}`,
     },
       h('span', { class: 'cal-num' }, String(parse(d).getDate())),
+      (() => { const n = state.lessons.filter(l => l.date === d).length; return n ? h('span', { class: 'cal-lessons' }, `${n} lesson${n > 1 ? 's' : ''}`) : null; })(),
       h('div', { class: 'cal-pills' },
         evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: ev => { ev.stopPropagation(); openEvent(e); } }, h('span', {}, e.title))),
         evs.length > 3 ? h('span', { class: 'more' }, `+${evs.length - 3}`) : null));
     const pick = () => { selected = d; if (d.slice(0, 7) !== month) month = d.slice(0, 7); rerender(); };
     cell.addEventListener('click', pick);
     cell.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
-    cell.addEventListener('dblclick', () => editEvent({ date: d, type: 'event' }));
+    cell.addEventListener('dblclick', () => hostOpts.onOpenWeek ? hostOpts.onOpenWeek(d) : editEvent({ date: d, type: 'event' }));
     grid.append(cell);
   }
   return grid;
@@ -100,7 +108,9 @@ function dayPanel() {
   return h('aside', { class: 'day-panel' },
     h('h3', {}, fmtLong(selected)), note ? h('p', { class: 'muted small' }, note) : null,
     evs.length ? h('ul', { class: 'ev-list' }, evs.map(eventRow)) : h('p', { class: 'muted' }, 'Nothing on this day.'),
-    h('button', { class: 'btn ghost sm', onclick: () => editEvent({ date: selected, type: 'event' }) }, icon('plus', 16), 'Add event'));
+    h('div', { class: 'row wrap' },
+      hostOpts.onDayMenu && wd < 5 ? h('button', { class: 'btn sm', onclick: () => hostOpts.onDayMenu(selected) }, icon('pen', 16), 'Change this day') : h('button', { class: 'btn ghost sm', onclick: () => editEvent({ date: selected, type: 'event' }) }, icon('plus', 16), 'Add event'),
+      hostOpts.onOpenWeek ? h('button', { class: 'btn ghost sm', onclick: () => hostOpts.onOpenWeek(selected) }, icon('calendar', 16), 'Open this week') : null));
 }
 
 function eventRow(e) {

@@ -8,11 +8,12 @@ import { renderTimetable } from './views/timetable.js';
 import { renderModeration } from './views/moderation.js';
 import { renderMaterials } from './views/materials.js';
 import { renderSettings } from './views/settings.js';
+import { openInstall, isInstalled, onInstallChange } from './views/install.js';
 
 const ROUTES = [
   { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
   { id: 'create', label: 'Create', short: 'Create', icon: 'pen', render: renderCreate },
-  { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar },
+  { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar, hidden: true },
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
   { id: 'moderation', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
@@ -27,6 +28,7 @@ function route() {
   const [id, ...rest] = (location.hash.slice(1) || 'planner').split('/');
   const r = ROUTES.find(r => r.id === id) || ROUTES[0];
   document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.id === r.id ? 'page' : 'false'));
+  document.querySelectorAll('dialog.modal[open] > header .icon-btn').forEach(b => b.click()); // leaving the page closes pop-ups
   if (cleanup) { cleanup(); cleanup = null; }
   main.innerHTML = '';
   current = r;
@@ -37,6 +39,7 @@ function route() {
 function buildNav() {
   const ul = document.getElementById('nav');
   for (const r of ROUTES) {
+    if (r.hidden) continue;
     ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id, 'aria-label': r.label }, icon(r.icon, 20), h('span', { class: 'long' }, r.label), h('span', { class: 'short', 'aria-hidden': 'true' }, r.short))));
   }
 }
@@ -47,12 +50,11 @@ function netStatus() {
   el.classList.toggle('off', !navigator.onLine);
 }
 
-let installEvt = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; document.getElementById('install').hidden = false; });
-document.getElementById('install').addEventListener('click', async () => {
-  if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null;
-  document.getElementById('install').hidden = true;
-});
+const installBtn = document.getElementById('install');
+installBtn.textContent = 'Get the app';
+installBtn.hidden = isInstalled();
+installBtn.addEventListener('click', openInstall);
+onInstallChange(() => { installBtn.hidden = isInstalled(); });
 
 async function start() {
   buildNav();

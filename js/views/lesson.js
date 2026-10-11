@@ -10,6 +10,7 @@ import { openChecker } from './checker.js';
 import { eventsOn, nextAssessment, typeOf, eventLabel } from '../events.js';
 import { creationFromLesson, creationFromNotes } from '../create/model.js';
 import { saveCreation } from '../state.js';
+import { markDone } from '../adjust.js';
 
 let tab = 'plan';
 let editing = false;
@@ -44,9 +45,15 @@ function panel(l, save, draw, m) {
     h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }),
       !l.date ? 'Not on the planner yet: drag it from “Needs a period” onto a period.' : `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`,
       s ? ` · ${subjectLabel(s)}${l.cls ? ' · ' + l.cls : ''}` : ''),
+    l.date && !l.done ? h('div', { class: 'row wrap lp-done' },
+      h('button', { class: 'btn ghost sm', title: 'For work you covered earlier, e.g. revision already done in class', onclick: async () => { m.close(); await markDone([l], { label: `“${l.title || 'Lesson'}” marked as already done` }); } }, icon('check', 16), 'Already done: take it off the plan'),
+      h('span', { class: 'muted small' }, 'This class’s next lessons move up into the free period.')) : null,
+    !l.date && l.done ? h('div', { class: 'row wrap lp-done' },
+      h('span', { class: 'done-badge' }, icon('check', 14), `Done already${l.doneOn ? ' (marked ' + fmtLong(l.doneOn) + ')' : ''}`),
+      h('button', { class: 'btn ghost sm', onclick: async () => { l.done = false; await saveLesson(l); toast('It’s back under “Needs a period” on the planner.'); draw(); } }, 'Not done: put it back')) : null,
     (dayEvents.length || nextTest) ? h('div', { class: 'lp-events' },
-      dayEvents.map(e => h('a', { class: 'ev-row', href: '#calendar/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
-      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null);
+      dayEvents.map(e => h('a', { class: 'ev-row', href: '#planner/month/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
+      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#planner/month/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null);
 
   const details = h('details', { class: 'lp-more', open: !c },
     h('summary', {}, 'Lesson details'),

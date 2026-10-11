@@ -1,4 +1,5 @@
 import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '../state.js';
+import { openInstall } from './install.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
 import { exportBackup, importBackup } from '../db.js';
@@ -52,7 +53,7 @@ function view() {
     field('Layout', h('select', { onchange: e => saveSettings({ plannerLayout: e.target.value }) },
       h('option', { value: 'days-rows', selected: (s.plannerLayout || 'days-rows') === 'days-rows' }, 'Days down the side, periods across the top'),
       h('option', { value: 'days-cols', selected: s.plannerLayout === 'days-cols' }, 'Days across the top, periods down the side'))),
-    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.autoAdjust, onchange: e => saveSettings({ autoAdjust: e.target.checked }) }),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.autoAdjust !== false, onchange: e => saveSettings({ autoAdjust: e.target.checked }) }),
       'When teaching time is lost or comes back, move lessons without asking first (you can still undo)')));
 
   // ---------- AI check ----------
@@ -81,6 +82,9 @@ function view() {
   } });
   const backupBtn = h('button', { class: 'btn' }, icon('download'), 'Download backup');
   backupBtn.onclick = async () => { const done = busy(backupBtn, 'Packing…'); try { download(await exportBackup(), `klasboek-backup-${new Date().toISOString().slice(0, 10)}.json`); } finally { done(); } };
+  page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Install on your devices'),
+    h('p', { class: 'muted small' }, 'Put Klasboek on your PC, Android phone or tablet, or Amazon Fire tablet. It opens like a normal app and works offline.'),
+    h('button', { class: 'btn', onclick: openInstall }, icon('download'), 'How to install')));
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Backup'),
     h('p', { class: 'muted small' }, 'Everything is saved in this browser on this device. Download a backup regularly (and before clearing your browser), and restore it to move to another device.'),
     h('div', { class: 'row wrap' }, backupBtn, h('button', { class: 'btn ghost', onclick: () => restoreIn.click() }, icon('upload'), 'Restore from backup'), restoreIn)));

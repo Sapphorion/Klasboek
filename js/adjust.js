@@ -84,7 +84,7 @@ function pull(sim, from, until) {
     }
     // Lessons waiting for a period come back into whatever is free.
     if (!stopped || frees.length) {
-      const waiting = sim.filter(l => !l.date && sameStream(l, s));
+      const waiting = sim.filter(l => !l.date && !l.done && sameStream(l, s));
       for (const l of waiting) { const f = frees.shift(); if (!f) break; l.date = f.date; l.periodId = f.pid; }
     }
   }
@@ -116,7 +116,7 @@ export async function afterTeachingChange(change, reason = '') {
   if (!moves.length) return;
   const off = moves.filter(m => !m.to.date).length;
   const summary = `${moves.length} lesson${moves.length > 1 ? 's' : ''} moved${off ? `, ${off} need${off > 1 ? '' : 's'} a period` : ''}.`;
-  if (state.settings.autoAdjust) {
+  if (state.settings.autoAdjust !== false) {
     const undo = await applyMoves(moves);
     toast(`Planner adjusted: ${summary}`, 'ok', { action: { label: 'Undo', run: undo } });
     return;
@@ -149,4 +149,31 @@ export function changeFor(before, after) {
   if (after && effectOf(after) !== 'normal') blocked.push(rangeOf(after));
   if (before && effectOf(before) !== 'normal') freed.push(rangeOf(before));
   return { blocked, freed };
+}
+
+// ---------- "Already done" ----------
+// Lessons done earlier (or covered already) come off the plan; the class's following lessons move up.
+export function planDone(lessons) {
+  const ids = new Set(lessons.map(l => l.id));
+  const sim = state.lessons.map(l => ({ ...l }));
+  const dates = sim.filter(l => ids.has(l.id) && l.date).map(l => l.date).sort();
+  for (const l of sim) if (ids.has(l.id)) { l.date = ''; l.periodId = ''; l.done = true; }
+  if (dates.length) pull(sim, dates[0], dates.at(-1));
+  const byId = new Map(state.lessons.map(l => [l.id, l]));
+  return sim.filter(l => !ids.has(l.id)).filter(l => { const o = byId.get(l.id); return o.date !== l.date || o.periodId !== l.periodId; })
+    .map(l => ({ lesson: byId.get(l.id), to: { date: l.date, pid: l.periodId } }));
+}
+
+export async function markDone(lessons, { label = 'Marked as done', onUndo } = {}) {
+  const moves = planDone(lessons);
+  const before = [...lessons, ...moves.map(m => m.lesson)].map(l => ({ l, date: l.date, pid: l.periodId, done: l.done, doneOn: l.doneOn }));
+  for (const l of lessons) { l.done = true; l.doneOn = new Date().toISOString().slice(0, 10); l.date = ''; l.periodId = ''; }
+  for (const m of moves) { m.lesson.date = m.to.date; m.lesson.periodId = m.to.pid; }
+  await saveLessons([...lessons, ...moves.map(m => m.lesson)]);
+  const undo = async () => {
+    for (const b of before) { b.l.date = b.date; b.l.periodId = b.pid; b.l.done = b.done; b.l.doneOn = b.doneOn; }
+    await saveLessons(before.map(b => b.l)); if (onUndo) await onUndo(); toast('Undone.');
+  };
+  const n = lessons.filter(l => before.find(b => b.l === l)?.date).length;
+  toast(`${label}.${n ? ` ${n} planned lesson${n > 1 ? 's' : ''} came off the plan${moves.length ? ` and ${moves.length} moved up` : ''}.` : ''}`, 'ok', { action: { label: 'Undo', run: undo } });
 }
