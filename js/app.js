@@ -10,6 +10,8 @@ import { renderModeration } from './views/moderation.js';
 import { renderMaterials } from './views/materials.js';
 import { renderSettings } from './views/settings.js';
 import { openInstall, isInstalled, onInstallChange } from './views/install.js';
+import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
+import { startSync, onSync, syncInfo } from './sync.js';
 
 const ROUTES = [
   { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
@@ -67,6 +69,19 @@ async function showVersion() {
   } catch {}
 }
 
+function syncBadge() {
+  let el = document.getElementById('sync-badge');
+  if (!el) { el = h('a', { id: 'sync-badge', class: 'sync-badge', href: '#settings' }); document.querySelector('.rail-foot')?.prepend(el); }
+  const s = syncInfo();
+  if (!s.signedIn) { el.hidden = true; return; }
+  el.hidden = false;
+  const ago = s.lastSync ? Math.round((Date.now() - new Date(s.lastSync)) / 60000) : null;
+  const [cls, text] = s.needsSignIn ? ['warn', 'Sign in to sync'] : s.syncing ? ['', 'Syncing…'] : s.error ? ['warn', 'Sync problem'] : s.dirty ? ['', 'Changes to sync'] : ['ok', ago === null ? 'Synced' : ago < 1 ? 'Synced just now' : ago < 60 ? `Synced ${ago} min ago` : 'Synced'];
+  el.className = 'sync-badge ' + cls; el.title = s.error || 'OneDrive sync';
+  el.replaceChildren(icon(s.error || s.needsSignIn ? 'offline' : 'check', 13), text);
+}
+setInterval(syncBadge, 60000);
+
 async function start() {
   buildNav();
   try { await loadState(); }
@@ -75,9 +90,16 @@ async function start() {
   window.addEventListener('online', () => { netStatus(); toast('Back online. AI is available again.'); });
   window.addEventListener('offline', () => { netStatus(); toast('Offline. Everything except AI still works.'); });
   window.addEventListener('hashchange', route);
+  // Coming back from the Microsoft sign-in page?
+  let justSignedIn = false;
+  try { const r = await handleRedirect(); if (r === 'signed-in') { justSignedIn = true; toast(`Signed in as ${account()?.name || account()?.email}. Syncing…`); } }
+  catch (e) { toast('Microsoft sign-in: ' + e.message, 'error'); }
+  if (!justSignedIn && await renewIfNeeded().catch(() => false)) return; // off to Microsoft for a moment
   // Re-render the current view when shared data changes elsewhere (e.g. a modal saved).
   onChange(what => { if (current?.live?.includes(what)) route(); });
   route();
+  syncBadge(); onSync(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
+  if (signedIn()) startSync(); else window.addEventListener('klasboek-signed-in', () => startSync(), { once: true });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // When a new version takes over, reload once so the teacher sees it straight away.
     const hadController = !!navigator.serviceWorker.controller;

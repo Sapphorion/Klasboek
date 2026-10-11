@@ -743,3 +743,14 @@ input.diary-pick { width: auto; }
 .ext-sec h3 { margin: 0; display: flex; gap: .4rem; align-items: center; }
 .ext-steps summary { cursor: pointer; font-weight: 700; color: var(--blue); }
 .ext-steps ol { margin: .4rem 0 0; padding-left: 1.2rem; display: grid; gap: .25rem; }
+/* Microsoft account */
+.account-sec .acct-row { display: flex; gap: .7rem; align-items: center; }
+.acct-dot { width: 2.4rem; height: 2.4rem; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 800; }
+.ms-btn { display: inline-flex; gap: .55rem; align-items: center; justify-self: start; }
+.account-sec { display: grid; gap: .6rem; }
+.account-sec input { min-width: 22rem; flex: 1; }
+code.copyable { background: #EEF2EF; padding: .1rem .35rem; border-radius: 4px; cursor: copy; word-break: break-all; }
+.sync-badge { display: inline-flex; gap: .3rem; align-items: center; font-size: .75rem; color: #CFE3DA; text-decoration: none; margin-bottom: .4rem; }
+.sync-badge.ok { color: #9BE0B8; } .sync-badge.warn { color: var(--marker); }
+@media (max-width: 760px) { .account-sec input { min-width: 0; } }
+.account-sec .check { justify-self: start; justify-content: flex-start; width: auto; }

@@ -1,5 +1,6 @@
 import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '../state.js';
 import { openInstall } from './install.js';
+import { accountSection } from './account.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
 import { exportBackup, importBackup } from '../db.js';
@@ -24,6 +25,7 @@ function view() {
     const url = await shrink(f, 300);
     await saveSettings({ logo: url }); logoImg.src = url; logoImg.hidden = false; toast('Logo saved. It appears on documents and slides.');
   } });
+  page.append(accountSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
       field('Your name', h('input', { value: s.teacherName, placeholder: 'e.g. Mr S. Botha', onchange: e => saveSettings({ teacherName: e.target.value.trim() }) })),
@@ -77,7 +79,7 @@ function view() {
   const restoreIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: async () => {
     const f = restoreIn.files[0]; if (!f) return;
     if (!await confirmBox('Restoring replaces everything in Klasboek on this device with the backup.', 'Restore backup')) return;
-    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
+    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
     catch (e) { toast(e.message, 'error'); }
   } });
   const backupBtn = h('button', { class: 'btn' }, icon('download'), 'Download backup');
