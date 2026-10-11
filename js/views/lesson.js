@@ -54,8 +54,8 @@ function panel(l, save, draw, m) {
       h('span', { class: 'done-badge' }, icon('check', 14), `Done already${l.doneOn ? ' (marked ' + fmtLong(l.doneOn) + ')' : ''}`),
       h('button', { class: 'btn ghost sm', onclick: async () => { l.done = false; await saveLesson(l); toast('It’s back under “Needs a period” on the planner.'); draw(); } }, 'Not done: put it back')) : null,
     (dayEvents.length || nextTest) ? h('div', { class: 'lp-events' },
-      dayEvents.map(e => h('a', { class: 'ev-row', href: '#planner/month/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
-      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#planner/month/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null);
+      dayEvents.map(e => h('a', { class: 'ev-row', href: '#calendar/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
+      nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null);
 
   const details = h('details', { class: 'lp-more', open: !c },
     h('summary', {}, 'Lesson details'),

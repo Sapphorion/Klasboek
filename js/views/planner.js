@@ -1,11 +1,11 @@
 // Week planner: timetable periods × school days, ATP topics to drag in, lessons to open.
-import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings, saveAtpItem, classLabel } from '../state.js';
+import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings, saveAtpItem, classLabel, diaryOn } from '../state.js';
 import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
 import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel, noticesDueSoon, periodBlocked, blockingEventFor } from '../events.js';
-import { editEvent, openEvent, calendarBody, setCalendarDate } from './calendar.js';
+import { editEvent, openEvent } from './calendar.js';
 import { dueText } from './notices.js';
 import { openTermPlanUpload } from './termplan.js';
 import { ttCellAt, ttDayFor, posLabel, changedOn, swapsOn } from '../ttday.js';
@@ -21,17 +21,15 @@ let trayScope = 'week';      // 'week' | 'term'
 let traySubject = '';        // filter
 let picked = null;           // tap-to-place: { atpId } or { lessonId }
 
-let viewMode = 'week';       // 'week' | 'month'
 let showDone = false;        // show topics marked "done already" in the tray
 
 let rootEl = null;
-// #planner, #planner/week/DATE, #planner/month, #planner/month/DATE
+// #planner, #planner/week/DATE (old #planner/month links go to the calendar)
 export function renderPlanner(root, [mode, date] = []) {
+  if (mode === 'month') { location.replace('#calendar' + (date ? '/' + date : '')); return null; }
   rootEl = root;
-  viewMode = mode === 'month' ? 'month' : 'week';
-  if (viewMode === 'month') setCalendarDate(date);
-  else if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) weekStart = mondayOf(date);
-  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events', 'notices'].includes(w)) rerender(); });
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) weekStart = mondayOf(date);
+  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events', 'notices', 'diary'].includes(w)) rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
 }
@@ -43,24 +41,6 @@ function weekDays() {
 const dayIdxOf = date => state.timetable.days.indexOf(WEEK[weekdayIndex(date)]);
 const cellKey = (dayIdx, pid) => `${dayIdx}|${pid}`;
 
-const modeSwitch = () => h('div', { class: 'seg view-switch', role: 'group', 'aria-label': 'Planner view' },
-  h('button', { 'aria-pressed': String(viewMode === 'week'), onclick: () => { if (viewMode !== 'week') location.hash = 'planner/week/' + weekStart; } }, 'Week'),
-  h('button', { 'aria-pressed': String(viewMode === 'month'), onclick: () => { if (viewMode !== 'month') location.hash = 'planner/month/' + weekStart; } }, 'Month'));
-
-function monthView() {
-  const wrap = h('div', { class: 'planner month-mode' });
-  wrap.append(h('div', { class: 'toolbar' },
-    h('div', { class: 'week-nav' }, h('div', { class: 'week-title' }, h('h1', {}, 'The school year'), h('span', { class: 'muted' }, 'Tests, holidays and events. Tap a day to change it, double-tap to plan that week.'))),
-    h('div', { class: 'row wrap' }, modeSwitch(),
-      h('button', { class: 'btn', onclick: () => openTell(weekStart, weekDays()) }, icon('pen'), 'Tell the planner')),
-  ));
-  wrap.append(calendarBody({
-    onOpenWeek: d => { location.hash = 'planner/week/' + mondayOf(d); },
-    onDayMenu: d => openDayMenu(d, mondayOf(d)),
-  }));
-  return wrap;
-}
-
 function moreMenu(tw, days) {
   const item = (ic, label, fn) => h('button', { role: 'menuitem', onclick: e => { e.target.closest('details').open = false; fn(); } }, icon(ic, 18), label);
   return h('details', { class: 'more-menu' },
@@ -68,14 +48,13 @@ function moreMenu(tw, days) {
     h('div', { class: 'more-list', role: 'menu' },
       item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
       item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),
-      item('month', 'Upload year planner or test timetable', () => { location.hash = 'planner/month/' + weekStart; }),
+      item('month', 'Upload year planner or test timetable', () => { location.hash = 'calendar/' + weekStart; }),
       item('check', 'Check grades and colours', openTidy),
       item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
     ));
 }
 
 function view() {
-  if (viewMode === 'month') return monthView();
   const tw = termWeekOf(weekStart) || termWeekOf(addDays(weekStart, 4));
   const days = weekDays();
   const wrap = h('div', { class: 'planner' });
@@ -93,7 +72,7 @@ function view() {
       termJump(tw),
     ),
     h('div', { class: 'row wrap' },
-      modeSwitch(),
+      h('a', { class: 'btn ghost', href: '#calendar/' + weekStart }, icon('month'), 'Calendar'),
       h('button', { class: 'btn', onclick: () => openTell(weekStart, days), title: 'Say what’s different this week, e.g. “Wednesday prize giving”' }, icon('pen'), 'Tell the planner'),
       h('button', { class: 'btn ghost', onclick: autoPlan, title: 'Place this week’s ATP topics into your timetable slots' }, icon('wand'), 'Auto-plan week'),
       moreMenu(tw, days),
@@ -126,6 +105,7 @@ function view() {
         return h('button', { class: 'tt-day-label' + (changed ? ' changed' : ''), title: 'Timetable changes', onclick: () => openTtChanges(weekStart) },
           (changed && pos.source ? 'Follows ' : '') + posLabel(pos) + (sw ? ` · ${sw} swap${sw > 1 ? 's' : ''}` : ''));
       })(),
+      (() => { const n = diaryOn(d.date).length; return n ? h('a', { class: 'dh-diary', href: '#diary/' + d.date, title: 'Diary for this day' }, icon('diary', 13), `${n} diary entr${n > 1 ? 'ies' : 'y'}`) : null; })(),
       evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => openEvent(e) }, h('span', {}, e.title))),
         evs.length > 3 ? h('button', { class: 'more', onclick: () => openDayMenu(d.date, weekStart) }, `+${evs.length - 3}`) : null) : null);
   };

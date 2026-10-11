@@ -7,16 +7,27 @@ import { today, parse, iso, addDays, mondayOf, fmt, fmtLong, inTerm } from '../d
 import { EVENT_TYPES, typeOf, eventsOn, noTeachingOn, byDateThenType, eventLabel, allEvents } from '../events.js';
 import { shrinkImage } from './timetable.js';
 import { afterTeachingChange, changeFor } from '../adjust.js';
+import { openDayMenu } from './daymenu.js';
 
 let month = today().slice(0, 7); // 'YYYY-MM'
 let selected = today();
 let mode = 'month';
 const hidden = new Set(); // event types filtered out
 
-// The calendar now lives inside the planner (Month view). Old links redirect there.
+// Its own page; day changes (half day, lost periods…) still flow straight into the planner.
 export function renderCalendar(root, [date]) {
-  location.replace('#planner/month' + (date ? '/' + date : ''));
-  return null;
+  setCalendarDate(date);
+  const page = () => h('div', { class: 'calendar-page' },
+    h('div', { class: 'toolbar' }, h('div', { class: 'week-title' }, h('h1', {}, 'School calendar'),
+      h('span', { class: 'muted' }, 'Tap a day to see it. “Change this day” for a half day, lost periods or no school: the planner moves lessons for you.'))),
+    calendarBody({
+      onOpenWeek: d => { location.hash = 'planner/week/' + mondayOf(d); },
+      onDayMenu: d => openDayMenu(d, mondayOf(d)),
+      onDiary: d => { location.hash = 'diary/' + d; },
+    }));
+  root.replaceChildren(page());
+  const off = onChange(w => { if (['events', 'notices', 'lessons', 'diary', 'subjects', 'timetable', 'settings'].includes(w)) root.replaceChildren(page()); });
+  return () => off();
 }
 
 let host = null, hostOpts = {};
@@ -110,7 +121,8 @@ function dayPanel() {
     evs.length ? h('ul', { class: 'ev-list' }, evs.map(eventRow)) : h('p', { class: 'muted' }, 'Nothing on this day.'),
     h('div', { class: 'row wrap' },
       hostOpts.onDayMenu && wd < 5 ? h('button', { class: 'btn sm', onclick: () => hostOpts.onDayMenu(selected) }, icon('pen', 16), 'Change this day') : h('button', { class: 'btn ghost sm', onclick: () => editEvent({ date: selected, type: 'event' }) }, icon('plus', 16), 'Add event'),
-      hostOpts.onOpenWeek ? h('button', { class: 'btn ghost sm', onclick: () => hostOpts.onOpenWeek(selected) }, icon('calendar', 16), 'Open this week') : null));
+      hostOpts.onOpenWeek ? h('button', { class: 'btn ghost sm', onclick: () => hostOpts.onOpenWeek(selected) }, icon('calendar', 16), 'Open this week') : null,
+      hostOpts.onDiary ? h('button', { class: 'btn ghost sm', onclick: () => hostOpts.onDiary(selected) }, icon('diary', 16), 'Diary') : null));
 }
 
 function eventRow(e) {
@@ -298,6 +310,7 @@ const toBase64 = file => new Promise(r => { const fr = new FileReader(); fr.onlo
 // Notices open their own page; other events open the editor.
 export function openEvent(e) {
   if (e.notice) { document.querySelector('dialog.modal')?.close(); location.hash = 'moderation/notice/' + e.notice; return; }
+  if (e.diaryId) { location.hash = 'diary/' + e.date; return; }
   editEvent(e);
 }
 

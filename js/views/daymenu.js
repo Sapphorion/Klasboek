@@ -38,6 +38,7 @@ export function openDayMenu(date, weekStart) {
       choice('periods', 'grid', 'Lose some periods', 'Assembly, prize giving in P5–P7…'),
       h('button', { class: 'dm-choice', onclick: () => { m.close(); editEvent({ date, type: 'test' }); } }, icon('flag', 20), h('span', {}, h('strong', {}, 'Test or deadline'), h('span', { class: 'muted small' }, 'Shows on the lessons and in what’s coming'))),
       h('button', { class: 'dm-choice', onclick: () => { m.close(); editEvent({ date, type: 'reminder' }); } }, icon('pen', 20), h('span', {}, h('strong', {}, 'Note or reminder'), h('span', { class: 'muted small' }, 'Lessons go ahead as normal'))),
+      h('button', { class: 'dm-choice', onclick: () => { m.close(); location.hash = 'diary/' + date; } }, icon('diary', 20), h('span', {}, h('strong', {}, 'Diary'), h('span', { class: 'muted small' }, 'Notes, to-dos, parent contact, how lessons went'))),
       choice('follows', 'swap', 'Different timetable day', ov ? `Follows ${posLabel(ov)}` : 'e.g. Monday follows Thursday'),
     ));
 

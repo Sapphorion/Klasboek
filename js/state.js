@@ -50,6 +50,7 @@ export const state = {
   materials: [], // { id, name, type, size, blob, subjectId, lessonId, added }
   events: [],      // { id, date, endDate, title, type, time, subjectId, grade, cls, notes, noTeaching, source }
   notices: [],     // moderation notices: { id, title, level, subjectId, grade, due, remind:[days], items:[{text,done}], notes, fileId, moderationId, submitted, submittedOn, created }
+  diary: [],       // teacher diary: { id, date, time, kind, text, done, cls, eventId, created, updated }
   creations: [],   // materials made in Create: { id, type, title, subjectId, grade, language, design, blocks|slides|rubric|cards, meta, created, updated }
   moderations: [], // { id, title, subjectId, cls, task, total, learners:[{name, mark, modMark, sampled, reason}], checks:{}, fileChecks:{}, ... }
 };
@@ -69,6 +70,7 @@ export async function loadState() {
   state.events = await db.all('events');
   state.notices = await db.all('notices');
   state.creations = await db.all('creations');
+  state.diary = await db.all('diary');
 }
 
 export const atpSort = (a, b) => a.subjectId.localeCompare(b.subjectId) || a.term - b.term || a.week - b.week || (a.order || 0) - (b.order || 0);
@@ -242,6 +244,22 @@ export async function saveNotice(n, { silent = false } = {}) {
 export async function deleteNotice(id) {
   state.notices = state.notices.filter(n => n.id !== id);
   await db.del('notices', id); emit('notices');
+}
+
+// ---------- Teacher diary ----------
+export const diaryById = id => state.diary.find(d => d.id === id);
+export const diaryOn = date => state.diary.filter(d => d.date === date).sort((a, b) => (a.time || '99').localeCompare(b.time || '99') || (a.created || '').localeCompare(b.created || ''));
+export async function saveDiary(d, { silent = false } = {}) {
+  if (!d.id) { d.id = uid('d_'); d.created = new Date().toISOString(); }
+  d.updated = new Date().toISOString();
+  const i = state.diary.findIndex(x => x.id === d.id);
+  if (i < 0) state.diary.push(d); else state.diary[i] = d;
+  await db.put('diary', d); if (!silent) emit('diary');
+  return d;
+}
+export async function deleteDiary(id) {
+  state.diary = state.diary.filter(d => d.id !== id);
+  await db.del('diary', id); emit('diary');
 }
 
 // ---------- Created materials ----------
