@@ -203,7 +203,7 @@ Lesson length: ${ctx.minutes} minutes (phase minutes must add up to this)
 ATP topic: ${ctx.topic}
 ATP content for this week:
 ${ctx.details || '(none given)'}
-${ctx.lessonOfWeek ? `This is lesson ${ctx.lessonOfWeek.n} of ${ctx.lessonOfWeek.total} on this topic this week, so focus on the part that fits that position.` : ''}
+${ctx.subtopic ? `This lesson focuses on: ${ctx.subtopic}. Keep the lesson on that part of the topic.\n` : ''}${ctx.textbook ? `Textbook guidance: learners use the Siyavula open textbook (${ctx.textbook.book}), ${ctx.textbook.chapter}; most relevant sections: ${ctx.textbook.sections.join('; ')}. Follow its sequence, terminology and notation, and refer learners to it (${ctx.textbook.url}) for reading and extra exercises.\n` : ''}${ctx.lessonOfWeek ? `This is lesson ${ctx.lessonOfWeek.n} of ${ctx.lessonOfWeek.total} on this topic this week, so focus on the part that fits that position.` : ''}
 ${ctx.notes ? 'Teacher notes: ' + ctx.notes : ''}
 ${ctx.upcomingTest ? (ctx.upcomingTest.sameDay ? `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on the day of this lesson; keep the lesson short and supportive around it.` : `Learners write "${ctx.upcomingTest.title}" (${ctx.upcomingTest.type}) on ${ctx.upcomingTest.date}. Build in revision and exam-style practice that prepares them for it.`) : ''}
 Worksheet (the class activity): about ${ctx.worksheetMarks || 20} marks.
@@ -374,7 +374,7 @@ export async function aiLessonNotes(ctx) {
   const lang = ctx.language && ctx.language !== 'English' ? `Write everything in ${ctx.language}.` : 'Write in South African English.';
   return call({
     system: `You are an experienced South African teacher writing CAPS-aligned learner notes. Clear, accurate, at the right level for the grade, with South African examples. ${lang}`,
-    content: `Write summarised learner notes (1-2 pages) for this lesson.\nSubject: ${ctx.subject}\nGrade: ${ctx.grade || 'not specified'}\nTopic: ${ctx.topic}\nATP content:\n${ctx.details || '(none given)'}${ctx.notes ? '\nTeacher notes: ' + ctx.notes : ''}`,
+    content: `Write summarised learner notes (1-2 pages) for this lesson.\nSubject: ${ctx.subject}\nGrade: ${ctx.grade || 'not specified'}\nTopic: ${ctx.topic}${ctx.subtopic ? '\nFocus of this lesson: ' + ctx.subtopic : ''}\nATP content:\n${ctx.details || '(none given)'}${ctx.textbook ? `\nTextbook: Siyavula ${ctx.textbook.book}, ${ctx.textbook.chapter} (sections: ${ctx.textbook.sections.join('; ')}). Match its terminology and notation.` : ''}${ctx.notes ? '\nTeacher notes: ' + ctx.notes : ''}`,
     tool: { name: 'save_notes', description: 'Save the notes', schema: NOTES_SCHEMA },
     maxTokens: 8000,
   });

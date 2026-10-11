@@ -1,6 +1,7 @@
 // Builds lesson content. Offline: a structured draft from the ATP (template).
 // Online with a key: Claude writes full content in the same shape (see ai.js CONTENT_SCHEMA).
 import { state, subjectById, atpById } from './state.js';
+import { siyavulaFor } from './siyavula.js';
 import { minutesBetween } from './dates.js';
 import { aiLessonContent, aiReady } from './ai.js';
 import { nextAssessment } from './events.js';
@@ -37,6 +38,8 @@ export function lessonContext(lesson) {
     term: atp?.term, week: atp?.week, notes: lesson.notes || '',
     lessonOfWeek: siblings.length > 1 && n ? { n, total: siblings.length } : null,
     worksheetMarks: 20,
+    subtopic: lesson.subtopic || '',
+    textbook: (() => { const t = siyavulaFor(subject, atp?.topic || lesson.title, atp?.details || '', lesson.siyavula); return t ? { book: t.book, chapter: t.chapter, url: t.url, sections: t.focus.length ? t.focus : t.sections.slice(0, 6) } : null; })(),
     upcomingTest: (() => { const e = nextAssessment(lesson.subjectId, lesson.date, 21); return e ? { date: e.date, title: e.title, type: e.type, sameDay: e.date === lesson.date } : null; })(),
   };
 }
@@ -54,7 +57,7 @@ export function templateContent(ctx) {
   const all = ctx.details.split('\n').map(s => s.trim()).filter(Boolean);
   const lines = all.filter(l => !META.test(l));
   const extraResources = all.filter(l => /^(resources|hulpbronne)/i.test(l)).map(l => l.replace(META, '')).filter(Boolean);
-  const focus = lines.length ? lines : [ctx.topic];
+  const focus = ctx.subtopic ? [ctx.subtopic, ...lines.filter(l => l !== ctx.subtopic).slice(0, 2)] : lines.length ? lines : [ctx.topic];
   const [m1, m2, m3, m4] = split(ctx.minutes, [0.15, 0.35, 0.35, 0.15]);
   const objectives = focus.slice(0, 4).map(l => (af ? 'Verduidelik en toepas: ' : 'Explain and apply: ') + l.replace(/[.;:]$/, ''));
   const chunk = (arr, n) => arr.reduce((acc, x, i) => (i % n ? acc[acc.length - 1].push(x) : acc.push([x]), acc), []);
@@ -78,7 +81,7 @@ export function templateContent(ctx) {
     objectives,
     priorKnowledge: '',
     vocabulary: [],
-    resources: [...extraResources, af ? 'Bord en kryt/merkers' : 'Board and chalk/markers', L.worksheet],
+    resources: [...extraResources, ...(ctx.textbook ? [`Siyavula ${ctx.textbook.book}, ${ctx.textbook.chapter} (${ctx.textbook.url})`] : []), af ? 'Bord en kryt/merkers' : 'Board and chalk/markers', L.worksheet],
     phases: [
       { name: af ? 'Inleiding' : 'Introduction', minutes: m1, teacher: af ? `Groet, stel doelwitte. Vra ’n vraag oor ${ctx.topic} om voorkennis te aktiveer.` : `Greet, share the objectives. Ask a question about ${ctx.topic} to activate prior knowledge.`, learners: af ? 'Beantwoord, bespreek met ’n maat.' : 'Answer, discuss with a partner.' },
       { name: af ? 'Onderrig' : 'Development', minutes: m2, teacher: (af ? 'Verduidelik en demonstreer: ' : 'Explain and model: ') + focus.slice(0, 3).join('; '), learners: af ? 'Luister, maak notas, vra vrae.' : 'Listen, take notes, ask questions.' },
@@ -98,7 +101,7 @@ export function templateNotes(ctx) {
   const af = ctx.language === 'Afrikaans';
   const META = /^(resources|hulpbronne|informal assessment|formal assessment|assessment|assessering|sba)\b[^:]*:\s*/i;
   const lines = ctx.details.split('\n').map(s => s.trim()).filter(l => l && !META.test(l));
-  const points = lines.length ? lines : [ctx.topic];
+  const points = ctx.subtopic ? [ctx.subtopic] : lines.length ? lines : [ctx.topic];
   return {
     title: ctx.topic,
     intro: af ? `In hierdie les leer ons oor ${ctx.topic.toLowerCase()}.` : `In this lesson we learn about ${ctx.topic.toLowerCase()}.`,

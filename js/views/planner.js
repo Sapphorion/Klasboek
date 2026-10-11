@@ -1,5 +1,5 @@
 // Week planner: timetable periods × school days, ATP topics to drag in, lessons to open.
-import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings, saveAtpItem } from '../state.js';
+import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings, saveAtpItem, classLabel } from '../state.js';
 import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
@@ -12,6 +12,8 @@ import { ttCellAt, ttDayFor, posLabel, changedOn, swapsOn } from '../ttday.js';
 import { openTtChanges } from './ttchanges.js';
 import { openTell } from './tellbox.js';
 import { openDayMenu } from './daymenu.js';
+import { openTidy, findProblems } from './tidy.js';
+import { partsOf } from './lesson.js';
 import { markDone } from '../adjust.js';
 
 let weekStart = mondayOf(today());
@@ -67,6 +69,7 @@ function moreMenu(tw, days) {
       item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
       item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),
       item('month', 'Upload year planner or test timetable', () => { location.hash = 'planner/month/' + weekStart; }),
+      item('check', 'Check grades and colours', openTidy),
       item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
     ));
 }
@@ -97,7 +100,7 @@ function view() {
     ),
   ));
 
-  wrap.append(weekStrip());
+  wrap.append(tidyBanner(), weekStrip());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
@@ -146,6 +149,16 @@ function rerender() {
   const sc = rootEl.querySelector('.grid-scroll')?.scrollLeft || 0;
   rootEl.replaceChildren(view());
   const g = rootEl.querySelector('.grid-scroll'); if (g) g.scrollLeft = sc;
+}
+
+function tidyBanner() {
+  const p = findProblems({ lessonsInPlace: false });
+  const n = p.noGrade.length + p.wrong.length + p.clash.length;
+  if (!n) return h('span');
+  const what = [p.wrong.length || p.noGrade.length ? 'some classes are filed under the wrong grade' : '', p.clash.length ? 'some subjects share a colour' : ''].filter(Boolean).join(' and ');
+  return h('div', { class: 'notice-banner tidy-banner', role: 'status' }, icon('flag', 18),
+    h('div', {}, h('strong', {}, 'Grades or colours mixed up'), h('span', {}, `It looks like ${what}.`)),
+    h('button', { class: 'btn sm', onclick: openTidy }, 'Check and fix'));
 }
 
 // This week and next week at a glance: tests, deadlines, events, moderation.
@@ -205,9 +218,9 @@ function slot(d, p) {
     class: 'slot' + (school ? '' : ' holiday') + (closed ? ' no-teach' : '') + (ttSubj ? ' expected' : ''),
     role: 'gridcell', 'data-date': d.date, 'data-period': p.id, tabindex: lessons.length ? -1 : 0,
     style: ttSubj ? { '--subj': ttSubj.colour } : {},
-    'aria-label': `${d.label} period ${p.label}${ttSubj ? ', ' + ttSubj.name : ''}${lessons.length ? '' : ', empty'}`,
+    'aria-label': `${d.label} period ${p.label}${ttSubj ? ', ' + classLabel(ttSubj, ttCell.cls) : ''}${lessons.length ? '' : ', empty'}`,
   });
-  if (ttSubj && !lessons.length) el.append(h('span', { class: 'expect' }, `${ttSubj.name}${ttCell.cls ? ' ' + ttCell.cls : ''}`));
+  if (ttSubj && !lessons.length) el.append(h('span', { class: 'expect' }, classLabel(ttSubj, ttCell.cls)));
   if (closed && !lessons.length) { const ev = blockingEventFor(d.date, p.id); if (ev && !ev.noTeaching) el.append(h('span', { class: 'expect lost' }, ev.title)); }
   if (!school && !lessons.length && !ttSubj) el.append(h('span', { class: 'expect' }, ''));
   for (const l of lessons) el.append(lessonChip(l));
@@ -228,10 +241,11 @@ function lessonChip(l) {
   const hasContent = !!l.content;
   const chip = h('div', {
     class: 'lesson' + (l.done ? ' done' : ''), 'data-lesson': l.id, tabindex: 0, role: 'button',
-    style: { '--subj': s?.colour || '#777' }, 'aria-label': `${s?.name || 'Lesson'}: ${l.title || a?.topic || ''}. Open lesson.`,
+    style: { '--subj': s?.colour || '#777' }, 'aria-label': `${classLabel(s, l.cls)}: ${l.title || a?.topic || ''}. Open lesson.`,
   },
-    h('span', { class: 'l-subj' }, `${s?.name || 'Lesson'}${l.cls ? ' · ' + l.cls : ''}`),
+    h('span', { class: 'l-subj' }, classLabel(s, l.cls)),
     h('span', { class: 'l-title' }, l.title || a?.topic || 'Untitled'),
+    l.subtopic ? h('span', { class: 'l-sub', title: l.subtopic }, l.subtopic) : null,
     h('span', { class: 'l-flags' }, hasContent ? h('span', { class: 'flag', title: 'Materials ready' }, icon('doc', 12), l.content.source === 'ai' ? 'AI' : 'Draft') : null, l.materialIds?.length ? h('span', { class: 'flag', title: 'Attached files' }, icon('clip', 12), l.materialIds.length) : null, l.done ? h('span', { class: 'flag' }, icon('check', 12), 'Taught') : null, ...assessmentsForLesson(l).slice(0, 1).map(e => h('span', { class: 'flag assess', title: eventLabel(e) }, icon('flag', 12), e.type === 'exam' ? 'Exam' : 'Test'))),
   );
   if (l.date) chip.append(h('button', { class: 'tick no-drag', 'aria-pressed': String(!!l.done), title: l.done ? 'Taught. Tap to undo.' : 'Mark as taught', 'aria-label': (l.done ? 'Taught: undo ' : 'Mark as taught: ') + (l.title || ''),
@@ -381,9 +395,9 @@ async function dropOnSlot(payload, date, periodId) {
       await saveLesson(existing); toast(`Changed the topic to “${a.topic}”.`);
       return;
     }
-    const cls = tt && tt.subjectId === a.subjectId ? tt.cls : (tt && !tt.subjectId ? tt.cls : '');
-    if (tt?.subjectId && tt.subjectId !== a.subjectId) toast(`Placed, but your timetable has ${subjectById(tt.subjectId)?.name} in that period.`, 'warn');
-    await saveLesson({ date, periodId, subjectId: a.subjectId, atpId: a.id, title: a.topic, cls, notes: '', content: null, materialIds: [], done: false });
+    const cls = tt && tt.subjectId === a.subjectId ? tt.cls : '';
+    if (tt?.subjectId && tt.subjectId !== a.subjectId) toast(`Placed, but your timetable has ${classLabel(subjectById(tt.subjectId), tt.cls)} in that period.`, 'warn');
+    await saveLesson({ date, periodId, subjectId: a.subjectId, atpId: a.id, title: a.topic, subtopic: nextPart(a), cls, notes: '', content: null, materialIds: [], done: false });
   } else if (payload.lessonId) {
     const l = state.lessons.find(x => x.id === payload.lessonId);
     if (!l || (l.date === date && l.periodId === periodId)) return;
@@ -391,8 +405,17 @@ async function dropOnSlot(payload, date, periodId) {
     l.date = date; l.periodId = periodId;
     if (tt && tt.subjectId === l.subjectId && tt.cls) l.cls = tt.cls;
     await saveLesson(l);
+    if (tt?.subjectId && tt.subjectId !== l.subjectId) toast(`Moved, but your timetable has ${classLabel(subjectById(tt.subjectId), tt.cls)} in that period.`, 'warn');
     if (existing) toast('Swapped the two lessons.');
   }
+}
+
+// The next part of an ATP topic (from its weekly content) that no lesson covers yet.
+function nextPart(a, extra = []) {
+  const parts = partsOf(a);
+  if (parts.length < 2) return '';
+  const used = new Set([...state.lessons, ...extra].filter(l => l.atpId === a.id).map(l => l.subtopic));
+  return parts.find(p => !used.has(p)) || '';
 }
 
 async function unplan(lessonId) {
@@ -438,7 +461,7 @@ async function autoPlan() {
     slots.forEach((s, i) => {
       const per = Math.max(1, Math.round(slots.length / items.length));
       const a = items[Math.min(items.length - 1, Math.floor(i / per))];
-      created.push({ date: s.date, periodId: s.periodId, subjectId, atpId: a.id, title: a.topic, cls: s.cls, notes: '', content: null, materialIds: [], done: false });
+      created.push({ date: s.date, periodId: s.periodId, subjectId, atpId: a.id, title: a.topic, subtopic: nextPart(a, created), cls: s.cls, notes: '', content: null, materialIds: [], done: false });
     });
   }
   if (created.length) await saveLessons(created);

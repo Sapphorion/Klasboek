@@ -1,6 +1,6 @@
 // The teacher's timetable: periods, days, and which subject/class sits in each slot.
 // Supports a one-week timetable or a two-week cycle (Week A / Week B).
-import { state, onChange, saveTimetable, subjectById, subjectLabel, upsertSubject } from '../state.js';
+import { state, onChange, saveTimetable, subjectById, subjectLabel, upsertSubject, classGrade } from '../state.js';
 import { h, icon, toast, dropZone, modal, confirmBox } from '../ui.js';
 import { uid } from '../db.js';
 import { readTimetableFile, matchSubject, kindOf } from '../importers.js';
@@ -147,9 +147,12 @@ function applyImport(res) {
   const periods = res.periods.map((p, i) => ({ id: tt.periods[i]?.id || uid('p'), label: p.label || String(i + 1), start: p.start || tt.periods[i]?.start || '', end: p.end || tt.periods[i]?.end || '' }));
   const two = res.cycle === 2;
   // A one-week file goes into the week being edited (so you can import Week B on its own).
-  const rows = res.cells.map(c => ({ ...c, week: two ? (c.week === 2 ? 2 : 1) : editWeek, match: matchSubject(c.subject, state.subjects) }));
+  const rows = res.cells.map(c => ({ ...c, week: two ? (c.week === 2 ? 2 : 1) : editWeek, match: matchSubject(c.subject, state.subjects, c.cls) }));
+  // Unknown subjects are grouped per grade, so Maths 10B and Maths 11A become two subjects.
+  const ukey = r => { const g = classGrade(r.cls); return r.subject.trim() + (g ? '|' + g : ''); };
+  const uname = k => { const [n, g] = k.split('|'); return g ? `${n} (Grade ${g})` : n; };
   const unknown = new Map();
-  rows.filter(r => !r.match && r.subject).forEach(r => unknown.set(r.subject.trim(), (unknown.get(r.subject.trim()) || 0) + 1));
+  rows.filter(r => !r.match && r.subject).forEach(r => unknown.set(ukey(r), (unknown.get(ukey(r)) || 0) + 1));
   const weeks = two ? [1, 2] : [editWeek];
   const bWeek = rows.filter(r => r.week === 2).length;
 
@@ -165,7 +168,7 @@ function applyImport(res) {
       ? `Found a two-week timetable: ${periods.length} periods, ${rows.length - bWeek} lessons in Week A and ${bWeek} in Week B.`
       : `Found ${periods.length} periods and ${rows.length} lessons.${(tt.cycle || 1) === 2 ? ` They’ll go into Week ${cycleLetter(editWeek)}.` : ''}`),
     unknown.size ? h('div', {}, h('h3', {}, 'Subjects to match'), h('p', { class: 'muted small' }, 'These names don’t match your subjects yet. Pick one, create it, or skip.'),
-      h('div', { class: 'stack' }, [...unknown].map(([name, n]) => h('label', { class: 'row between match-row' }, h('span', {}, h('strong', {}, name), h('span', { class: 'muted small' }, ` · ${n} slot${n > 1 ? 's' : ''}`)),
+      h('div', { class: 'stack' }, [...unknown].map(([name, n]) => h('label', { class: 'row between match-row' }, h('span', {}, h('strong', {}, uname(name)), h('span', { class: 'muted small' }, ` · ${n} slot${n > 1 ? 's' : ''}`)),
         h('select', { onchange: e => choices[name] = e.target.value }, h('option', { value: 'new' }, 'Create as new subject'), h('option', { value: '' }, 'Skip (leave free)'), state.subjects.map(s => h('option', { value: s.id }, subjectLabel(s)))))))) : null,
     ...weeks.map(preview),
     h('div', { class: 'row end' },
@@ -173,13 +176,13 @@ function applyImport(res) {
       h('button', { class: 'btn primary', onclick: async () => {
         const map = {};
         for (const [name, v] of Object.entries(choices)) {
-          if (v === 'new') { const grade = (rows.find(r => r.subject.trim() === name)?.cls.match(/^\d{1,2}/) || [])[0] || ''; const s = await upsertSubject({ name, grade, language: /afr/i.test(name) ? 'Afrikaans' : 'English' }); map[name] = s.id; }
+          if (v === 'new') { const [nm, grade = ''] = name.split('|'); const s = await upsertSubject({ name: nm, grade, language: /afr/i.test(nm) ? 'Afrikaans' : 'English' }); map[name] = s.id; }
           else map[name] = v;
         }
         const out = { 1: {}, 2: {} };
         for (const r of rows) {
           if (r.dayIndex < 0 || r.dayIndex >= tt.days.length || !periods[r.periodIndex]) continue;
-          const sid = r.match?.id || map[r.subject.trim()];
+          const sid = r.match?.id || map[ukey(r)];
           if (sid) out[r.week][`${r.dayIndex}|${periods[r.periodIndex].id}`] = { subjectId: sid, cls: r.cls || '', room: r.room || '' };
         }
         const patch = { periods };

@@ -1,5 +1,5 @@
 // Subjects and their Annual Teaching Plans.
-import { state, onChange, upsertSubject, deleteSubject, replaceAtp, replaceAtpTerm, saveAtpItem, deleteAtpItem, subjectLabel, SUBJECT_COLOURS } from '../state.js';
+import { state, onChange, upsertSubject, deleteSubject, replaceAtp, replaceAtpTerm, saveAtpItem, deleteAtpItem, subjectLabel, SUBJECT_COLOURS, freeColour } from '../state.js';
 import { h, icon, toast, busy, confirmBox, dropZone, modal } from '../ui.js';
 import { uid } from '../db.js';
 import { readAtpFile } from '../importers.js';
@@ -47,7 +47,7 @@ const ALL_CAPS = CAPS_SUBJECTS.flatMap(([, list]) => list);
 const OTHER = '__other__';
 
 function subjectForm(s, onSave) {
-  const f = { name: s.name || '', grade: s.grade || '', language: s.language || 'English', colour: s.colour || SUBJECT_COLOURS[state.subjects.length % SUBJECT_COLOURS.length] };
+  const f = { name: s.name || '', grade: s.grade || '', language: s.language || 'English', colour: s.colour || freeColour(s.id) };
   const isOther = !!f.name && !ALL_CAPS.includes(f.name);
   const otherIn = h('input', { value: isOther ? f.name : '', placeholder: 'Type the subject name', 'aria-label': 'Subject name', hidden: !isOther, oninput: e => f.name = e.target.value });
   const langSel = h('select', { onchange: e => f.language = e.target.value }, ['English', 'Afrikaans'].map(l => h('option', { selected: l === f.language }, l)));

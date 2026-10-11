@@ -11,6 +11,7 @@ import { eventsOn, nextAssessment, typeOf, eventLabel } from '../events.js';
 import { creationFromLesson, creationFromNotes } from '../create/model.js';
 import { saveCreation } from '../state.js';
 import { markDone } from '../adjust.js';
+import { siyavulaFor, chaptersOf, chapterUrl } from '../siyavula.js';
 
 let tab = 'plan';
 let editing = false;
@@ -45,6 +46,7 @@ function panel(l, save, draw, m) {
     h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }),
       !l.date ? 'Not on the planner yet: drag it from “Needs a period” onto a period.' : `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`,
       s ? ` · ${subjectLabel(s)}${l.cls ? ' · ' + l.cls : ''}` : ''),
+    topicBar(l, save, draw, m),
     l.date && !l.done ? h('div', { class: 'row wrap lp-done' },
       h('button', { class: 'btn ghost sm', title: 'For work you covered earlier, e.g. revision already done in class', onclick: async () => { m.close(); await markDone([l], { label: `“${l.title || 'Lesson'}” marked as already done` }); } }, icon('check', 16), 'Already done: take it off the plan'),
       h('span', { class: 'muted small' }, 'This class’s next lessons move up into the free period.')) : null,
@@ -293,3 +295,52 @@ function filesPane(l, save, draw) {
 export const sizeOf = b => b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+// Which ATP topic this lesson is on, which part of it, and the matching Siyavula chapter.
+const META_LINE = /^(resources|hulpbronne|informal assessment|formal assessment|sba|assessment|assessering|requisite pre-?knowledge|pre-?knowledge|voorkennis)\b/i;
+export const partsOf = a => (a?.details || '').split('\n').map(x => x.replace(/^[-•*·\d.)\s]+/, '').trim()).filter(x => x && x.length > 2 && !META_LINE.test(x));
+
+function topicBar(l, save, draw, m) {
+  const s = subjectById(l.subjectId);
+  const a = atpById(l.atpId);
+  const list = state.atp.filter(x => x.subjectId === l.subjectId);
+  const terms = [...new Set(list.map(x => x.term))].sort();
+  const setTitle = t => { l.title = t; const hd = m.el.querySelector('header h2'); if (hd) hd.textContent = t; };
+  const topicSel = h('select', { 'aria-label': 'ATP topic for this lesson', onchange: async e => {
+    const old = atpById(l.atpId), nw = atpById(e.target.value);
+    l.atpId = nw ? nw.id : '';
+    if (nw && (!l.title || l.title === old?.topic || /^New lesson$|^Choose a /.test(l.title))) setTitle(nw.topic);
+    l.subtopic = ''; l.siyavula = '';
+    await saveLesson(l); draw();
+  } },
+    h('option', { value: '' }, list.length ? 'Not from the ATP' : 'No ATP for this subject yet'),
+    terms.map(t => h('optgroup', { label: `Term ${t}` }, list.filter(x => x.term === t).map(x => h('option', { value: x.id, selected: x.id === l.atpId }, `Wk ${x.week}${x.weekEnd && x.weekEnd !== x.week ? '–' + x.weekEnd : ''} · ${x.topic}`)))));
+
+  const sv = siyavulaFor(s, a?.topic || l.title, a?.details || '', l.siyavula);
+  const parts = partsOf(a);
+  const svParts = sv ? sv.sections.filter(x => !parts.includes(x)) : [];
+  const custom = l.subtopic && !parts.includes(l.subtopic) && !svParts.includes(l.subtopic);
+  const partSel = h('select', { 'aria-label': 'Part of the topic', onchange: e => {
+    let v = e.target.value;
+    if (v === '__own') { v = (prompt('What part of the topic is this lesson on?', l.subtopic || '') || '').trim(); }
+    l.subtopic = v; save(); draw();
+  } },
+    h('option', { value: '' }, 'The whole topic'),
+    parts.length ? h('optgroup', { label: 'From the ATP' }, parts.map(x => h('option', { value: x, selected: x === l.subtopic }, x.length > 90 ? x.slice(0, 88) + '…' : x))) : null,
+    svParts.length ? h('optgroup', { label: `Siyavula ${sv.chapter}` }, svParts.map(x => h('option', { value: x, selected: x === l.subtopic }, x))) : null,
+    custom ? h('option', { value: l.subtopic, selected: true }, l.subtopic) : null,
+    h('option', { value: '__own' }, 'Type my own…'));
+
+  const chs = chaptersOf(s);
+  const book = chs.length ? h('div', { class: 'lp-book' },
+    h('span', { class: 'lbl' }, 'Textbook'),
+    sv ? h('a', { href: sv.url, target: '_blank', rel: 'noopener' }, `Siyavula ${sv.book} · ${sv.chapter}`, icon('right', 12)) : h('span', { class: 'muted small' }, 'No matching Siyavula chapter found. Choose one:'),
+    h('select', { class: 'sm', 'aria-label': 'Siyavula chapter', onchange: e => { l.siyavula = e.target.value; save(); draw(); } },
+      h('option', { value: '' }, sv && !sv.chosen ? 'Matched automatically' : 'Match automatically'),
+      chs.map(c => h('option', { value: c[2], selected: c[2] === l.siyavula }, `Ch ${c[0]}: ${c[1]}`)))) : null;
+
+  return h('div', { class: 'lp-topic' },
+    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Topic'), topicSel),
+    h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Today’s part of it'), partSel),
+    book);
+}

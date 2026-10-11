@@ -87,11 +87,26 @@ export async function saveTimetable(patch) {
 // ---------- Subjects ----------
 export const subjectById = id => state.subjects.find(s => s.id === id);
 export const subjectLabel = s => s ? `${s.name}${s.grade ? ' · Gr ' + s.grade : ''}` : 'No subject';
+// The grade a class name points to: "11A", "Gr 11 A", "10.3" → "11", "11", "10".
+export const classGrade = cls => (String(cls || '').match(/^\s*(?:gr(?:ade|aad)?\.?\s*)?(\d{1,2})(?!\d)/i) || [])[1] || '';
+// Short label for a lesson or slot that always shows the grade: "Mathematics · 11A" or "Mathematics · Gr 11".
+export function classLabel(s, cls) {
+  if (!s) return cls || 'Lesson';
+  const g = classGrade(cls);
+  const grade = s.grade && g !== String(s.grade) ? `Gr ${s.grade}` : '';
+  return [s.name, [grade, cls].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+}
+// A colour no other subject uses yet (falls back to the least used one).
+export function freeColour(except = '') {
+  const used = state.subjects.filter(s => s.id !== except).map(s => (s.colour || '').toUpperCase());
+  return SUBJECT_COLOURS.find(c => !used.includes(c.toUpperCase()))
+    || SUBJECT_COLOURS.slice().sort((a, b) => used.filter(u => u === a.toUpperCase()).length - used.filter(u => u === b.toUpperCase()).length)[0];
+}
 
 export async function upsertSubject(s) {
   if (!s.id) {
     s.id = uid('s_');
-    s.colour = s.colour || SUBJECT_COLOURS[state.subjects.length % SUBJECT_COLOURS.length];
+    s.colour = s.colour || freeColour();
     state.subjects.push(s);
   } else {
     const i = state.subjects.findIndex(x => x.id === s.id);
