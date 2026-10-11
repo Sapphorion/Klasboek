@@ -26,7 +26,7 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 
 1. Create a new GitHub repository (e.g. `klasboek`) and upload everything in this folder (keep the folder structure, including `.nojekyll`).
 2. In the repo: **Settings → Pages → Source: Deploy from a branch → main / root**.
-3. Open `https://<your-username>.github.io/klasboek/` and install it (the **Get the app** button and Settings → *Install on your devices* show these steps):
+3. Open `https://<your-username>.github.io/Klasboek/ (the address matches the repository name, capitals included)` and install it (the **Get the app** button and Settings → *Install on your devices* show these steps):
    - **PC (Windows/Mac)**: Chrome or Edge → install icon in the address bar, or menu → *Install Klasboek*. It gets its own window and Start menu shortcut.
    - **Android**: Chrome → ⋮ → *Install app* (or *Add to Home screen*).
    - **Amazon Fire tablet**: Silk browser → menu → *Add to Home screen*. Open it once online so it downloads for offline use.

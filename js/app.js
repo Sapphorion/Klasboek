@@ -56,6 +56,15 @@ installBtn.hidden = isInstalled();
 installBtn.addEventListener('click', openInstall);
 onInstallChange(() => { installBtn.hidden = isInstalled(); });
 
+async function showVersion() {
+  try {
+    const v = (await caches.keys()).filter(k => k.startsWith('klasboek-v')).sort((a, b) => +b.slice(10) - +a.slice(10))[0];
+    if (!v) return;
+    const el = document.getElementById('app-version') || document.querySelector('.rail-foot')?.appendChild(h('span', { id: 'app-version', class: 'app-version' }));
+    if (el) el.textContent = 'Version ' + v.slice(10);
+  } catch {}
+}
+
 async function start() {
   buildNav();
   try { await loadState(); }
@@ -68,7 +77,12 @@ async function start() {
   onChange(what => { if (current?.live?.includes(what)) route(); });
   route();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // When a new version takes over, reload once so the teacher sees it straight away.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('sw.js').then(reg => { reg.update().catch(() => {}); }).catch(() => {});
+    showVersion();
   }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 }

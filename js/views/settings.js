@@ -84,7 +84,19 @@ function view() {
   backupBtn.onclick = async () => { const done = busy(backupBtn, 'Packing…'); try { download(await exportBackup(), `klasboek-backup-${new Date().toISOString().slice(0, 10)}.json`); } finally { done(); } };
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Install on your devices'),
     h('p', { class: 'muted small' }, 'Put Klasboek on your PC, Android phone or tablet, or Amazon Fire tablet. It opens like a normal app and works offline.'),
-    h('button', { class: 'btn', onclick: openInstall }, icon('download'), 'How to install')));
+    h('div', { class: 'row wrap' },
+      h('button', { class: 'btn', onclick: openInstall }, icon('download'), 'How to install'),
+      h('button', { class: 'btn ghost', onclick: async e => {
+        const b = e.currentTarget; b.disabled = true; b.textContent = 'Checking…';
+        try {
+          const reg = await navigator.serviceWorker?.getRegistration();
+          if (!reg) { toast('Updates work once Klasboek is opened from its web address.', 'warn'); return; }
+          await reg.update();
+          if (reg.installing || reg.waiting) toast('Downloading the new version. Klasboek will reload by itself.');
+          else toast('You have the latest version.');
+        } catch { toast('Couldn’t check. Are you online?', 'error'); }
+        finally { b.disabled = false; b.textContent = 'Check for updates'; }
+      } }, 'Check for updates'))));
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Backup'),
     h('p', { class: 'muted small' }, 'Everything is saved in this browser on this device. Download a backup regularly (and before clearing your browser), and restore it to move to another device.'),
     h('div', { class: 'row wrap' }, backupBtn, h('button', { class: 'btn ghost', onclick: () => restoreIn.click() }, icon('upload'), 'Restore from backup'), restoreIn)));
