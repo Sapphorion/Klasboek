@@ -47,6 +47,14 @@ function view() {
       Object.keys(DEFAULT_TERMS).map(y => h('option', { value: y, selected: +y === s.year }, y))), 'Picking a year loads its public school dates.')),
     termsBox));
 
+  // ---------- Planner ----------
+  page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Planner'),
+    field('Layout', h('select', { onchange: e => saveSettings({ plannerLayout: e.target.value }) },
+      h('option', { value: 'days-rows', selected: (s.plannerLayout || 'days-rows') === 'days-rows' }, 'Days down the side, periods across the top'),
+      h('option', { value: 'days-cols', selected: s.plannerLayout === 'days-cols' }, 'Days across the top, periods down the side'))),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.autoAdjust, onchange: e => saveSettings({ autoAdjust: e.target.checked }) }),
+      'When teaching time is lost or comes back, move lessons without asking first (you can still undo)')));
+
   // ---------- AI ----------
   const keyIn = h('input', { type: 'password', value: s.apiKey, placeholder: 'sk-ant-…', autocomplete: 'off', onchange: e => saveSettings({ apiKey: e.target.value.trim() }) });
   const testBtn = h('button', { class: 'btn ghost sm' }, 'Test the key');

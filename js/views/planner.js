@@ -1,15 +1,16 @@
 // Week planner: timetable periods × school days, ATP topics to drag in, lessons to open.
-import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable } from '../state.js';
+import { state, onChange, subjectById, atpById, saveLesson, saveLessons, deleteLesson, subjectLabel, saveTimetable, saveSettings } from '../state.js';
 import { h, icon, toast, confirmBox } from '../ui.js';
 import { today, mondayOf, addDays, fmt, termWeekOf, mondayOfTermWeek, termWeeks, inTerm, weekdayIndex, cycleWeekOf, cycleLetter, cellsFor } from '../dates.js';
 import { exportWeekPlanDocx } from '../exporters.js';
 import { openLesson } from './lesson.js';
-import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel, noticesDueSoon } from '../events.js';
+import { eventsOn, noTeachingOn, assessmentsForLesson, upcoming, typeOf, eventLabel, noticesDueSoon, periodBlocked, blockingEventFor } from '../events.js';
 import { editEvent, openEvent } from './calendar.js';
 import { dueText } from './notices.js';
 import { openTermPlanUpload } from './termplan.js';
 import { ttCellAt, ttDayFor, posLabel, changedOn, swapsOn } from '../ttday.js';
 import { openTtChanges } from './ttchanges.js';
+import { tellBox } from './tellbox.js';
 
 let weekStart = mondayOf(today());
 let trayScope = 'week';      // 'week' | 'term'
@@ -56,16 +57,24 @@ function view() {
     ),
   ));
 
-  wrap.append(noticeBanner(), comingUp());
+  wrap.append(tellBox(weekStart, days), noticeBanner(), comingUp());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
-  const grid = h('div', { class: 'week-grid', style: { gridTemplateColumns: `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` }, role: 'grid', 'aria-label': 'Week timetable' });
-  grid.append(h('div', { class: 'corner' }));
-  for (const d of days) {
+  // Default: days down the side, periods across the top. The other way round is one tap away.
+  const rows = (state.settings.plannerLayout || 'days-rows') === 'days-rows';
+  const periods = state.timetable.periods;
+  const grid = h('div', {
+    class: 'week-grid ' + (rows ? 'rows' : 'cols'), role: 'grid', 'aria-label': 'Week timetable',
+    style: { gridTemplateColumns: rows ? `9.5rem repeat(${periods.length}, minmax(8rem, 1fr))` : `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` },
+  });
+  const dayHead = d => {
     const isToday = d.date === today();
     const evs = eventsOn(d.date);
-    grid.append(h('div', { class: 'day-head' + (isToday ? ' today' : ''), role: 'columnheader' }, h('strong', {}, d.label), h('span', {}, fmt(d.date)),
+    const blocked = noTeachingOn(d.date);
+    return h('div', { class: 'day-head' + (isToday ? ' today' : '') + (blocked ? ' blocked' : ''), role: rows ? 'rowheader' : 'columnheader' },
+      h('div', { class: 'dh-top' }, h('strong', {}, d.label), h('span', {}, fmt(d.date)),
+        h('button', { class: 'add-note', title: 'Add a note or reminder', 'aria-label': `Add a note or reminder on ${d.label} ${fmt(d.date)}`, onclick: () => editEvent({ date: d.date, type: 'reminder' }) }, icon('plus', 14))),
       (() => {
         const pos = ttDayFor(d.date);
         const changed = changedOn(d.date);
@@ -74,17 +83,21 @@ function view() {
         return h('button', { class: 'tt-day-label' + (changed ? ' changed' : ''), title: 'Timetable changes', onclick: () => openTtChanges(weekStart) },
           (changed && pos.source ? 'Follows ' : '') + posLabel(pos) + (sw ? ` · ${sw} swap${sw > 1 ? 's' : ''}` : ''));
       })(),
-      h('button', { class: 'add-note', title: 'Add a note or reminder', 'aria-label': `Add a note or reminder on ${d.label} ${fmt(d.date)}`, onclick: () => editEvent({ date: d.date, type: 'reminder' }) }, icon('plus', 14)),
       evs.length ? h('div', { class: 'day-events' }, evs.slice(0, 3).map(e => h('button', { class: 'pill', style: { '--c': typeOf(e.type).colour }, title: eventLabel(e), onclick: () => openEvent(e) }, h('span', {}, e.title))),
-        evs.length > 3 ? h('a', { class: 'more', href: '#calendar/' + d.date }, `+${evs.length - 3}`) : null) : null));
-  }
-  for (const p of state.timetable.periods) {
-    grid.append(h('div', { class: 'period-head', role: 'rowheader' }, h('strong', {}, p.label), p.start ? h('span', {}, p.start) : null));
-    for (const d of days) grid.append(slot(d, p));
+        evs.length > 3 ? h('a', { class: 'more', href: '#calendar/' + d.date }, `+${evs.length - 3}`) : null) : null);
+  };
+  const periodHead = p => h('div', { class: 'period-head', role: rows ? 'columnheader' : 'rowheader' }, h('strong', {}, p.label), p.start ? h('span', {}, p.start + (rows && p.end ? '–' + p.end : '')) : null);
+  grid.append(h('div', { class: 'corner' }, rows ? h('button', { class: 'rotate', title: 'Show days across the top', 'aria-label': 'Show days across the top', onclick: () => saveSettings({ plannerLayout: 'days-cols' }) }, icon('swap', 16)) : h('button', { class: 'rotate', title: 'Show days down the side', 'aria-label': 'Show days down the side', onclick: () => saveSettings({ plannerLayout: 'days-rows' }) }, icon('swap', 16))));
+  if (rows) {
+    periods.forEach(p => grid.append(periodHead(p)));
+    for (const d of days) { grid.append(dayHead(d)); for (const p of periods) grid.append(slot(d, p)); }
+  } else {
+    days.forEach(d => grid.append(dayHead(d)));
+    for (const p of periods) { grid.append(periodHead(p)); for (const d of days) grid.append(slot(d, p)); }
   }
   if (!state.timetable.periods.length) grid.append(h('p', { class: 'empty', style: { gridColumn: '1 / -1' } }, 'Add your periods on the Timetable page first.'));
 
-  wrap.append(h('div', { class: 'planner-body' }, h('div', { class: 'grid-scroll' }, grid), tray(tw)));
+  wrap.append(h('div', { class: 'planner-body' + ((state.settings.plannerLayout || 'days-rows') === 'days-rows' ? ' rows' : '') }, h('div', { class: 'grid-scroll' }, grid), tray(tw)));
   return wrap;
 }
 
@@ -145,7 +158,7 @@ function termJump(tw) {
 }
 
 function slot(d, p) {
-  const closed = noTeachingOn(d.date);
+  const closed = periodBlocked(d.date, p.id);
   const ttCell = closed ? null : ttCellAt(d.date, p.id);
   const ttSubj = ttCell && subjectById(ttCell.subjectId);
   const lessons = state.lessons.filter(l => l.date === d.date && l.periodId === p.id);
@@ -157,6 +170,7 @@ function slot(d, p) {
     'aria-label': `${d.label} period ${p.label}${ttSubj ? ', ' + ttSubj.name : ''}${lessons.length ? '' : ', empty'}`,
   });
   if (ttSubj && !lessons.length) el.append(h('span', { class: 'expect' }, `${ttSubj.name}${ttCell.cls ? ' ' + ttCell.cls : ''}`));
+  if (closed && !lessons.length) { const ev = blockingEventFor(d.date, p.id); if (ev && !ev.noTeaching) el.append(h('span', { class: 'expect lost' }, ev.title)); }
   if (!school && !lessons.length && !ttSubj) el.append(h('span', { class: 'expect' }, ''));
   for (const l of lessons) el.append(lessonChip(l));
   el.addEventListener('click', e => { if (e.target === el || e.target.classList.contains('expect')) placePicked(d.date, p.id); });
@@ -202,6 +216,11 @@ function tray(tw) {
     subjects.length > 1 ? h('select', { class: 'sm', 'aria-label': 'Subject', onchange: e => { traySubject = e.target.value; rerender(); } },
       h('option', { value: '' }, 'All subjects'), subjects.map(s => h('option', { value: s.id, selected: s.id === traySubject }, subjectLabel(s)))) : null,
   ));
+  const waiting = state.lessons.filter(l => !l.date);
+  if (waiting.length) box.append(h('div', { class: 'needs-period' },
+    h('h3', {}, `Needs a period (${waiting.length})`),
+    h('p', { class: 'muted small' }, 'These were moved off when teaching time was lost and didn’t fit before the end of term. Drag one onto a period.'),
+    h('div', { class: 'np-list' }, waiting.map(lessonChip))));
   const list = h('div', { class: 'tray-list', 'data-tray': '1' });
   if (!subjects.length) list.append(h('p', { class: 'empty' }, 'Add a subject and upload its ATP to see topics here. ', h('a', { href: '#subjects' }, 'Add a subject')));
   else if (!tw) list.append(h('p', { class: 'empty' }, 'This week is a school holiday. Use Jump to choose a term.'));
@@ -338,7 +357,7 @@ async function autoPlan() {
     for (const p of state.timetable.periods) {
       const tt = ttCellAt(d.date, p.id);
       if (!tt?.subjectId) continue;
-      if (state.lessons.some(l => l.date === d.date && l.periodId === p.id)) continue;
+      if (periodBlocked(d.date, p.id) || state.lessons.some(l => l.date === d.date && l.periodId === p.id)) continue;
       const k = `${tt.subjectId}|${tt.cls || ''}`;
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push({ date: d.date, periodId: p.id, cls: tt.cls || '', subjectId: tt.subjectId });

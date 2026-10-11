@@ -36,6 +36,9 @@ export const allEvents = () => state.events.concat(noticeEvents());
 export const eventsOn = date => allEvents().filter(e => covers(e, date)).sort(byDateThenType);
 export const noTeachingOn = date => state.events.some(e => e.noTeaching && covers(e, date));
 export const isSchoolDay = date => inTerm(date) && !noTeachingOn(date);
+// A period is lost if the whole day has no teaching, or an event takes that period (e.g. prize giving in P5–P7).
+export const periodBlocked = (date, pid) => noTeachingOn(date) || state.events.some(e => (e.blockedPeriods || []).includes(pid) && covers(e, date));
+export const blockingEventFor = (date, pid) => state.events.find(e => covers(e, date) && (e.noTeaching || (e.blockedPeriods || []).includes(pid)));
 
 // Tests, exams and deadlines that belong to one of the teacher's subjects.
 export const isMine = e => !!e.subjectId && state.subjects.some(s => s.id === e.subjectId);

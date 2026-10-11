@@ -339,3 +339,20 @@ ${JSON.stringify(current).slice(0, 60000)}`,
     maxTokens: 16000,
   });
 }
+
+// ---------- Tell the planner ----------
+export async function aiTell(text, weekDates, periods, year) {
+  const r = await call({
+    system: 'You turn a South African teacher’s short note about their school week into calendar entries. Only include what the note says.',
+    content: `The week on screen: ${weekDates.map(d => `${d.label} = ${d.date}`).join(', ')}. Year ${year}.
+Periods: ${periods.map(p => `${p.label}${p.start ? ' (' + p.start + '–' + p.end + ')' : ''}`).join(', ')}.
+For each thing that changes the school day give an item. effect: "none" = no normal lessons all day; "periods" = only some periods are lost (list their labels); "note" = lessons go ahead, it is just a note; "normal" = a normal school day (no entry needed).
+Teacher’s note: ${text}`,
+    tool: { name: 'save_week', description: 'Save what happens this week', schema: { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: {
+      date: { type: 'string', description: 'YYYY-MM-DD' }, endDate: { type: 'string', description: 'YYYY-MM-DD or empty' }, title: { type: 'string' },
+      effect: { type: 'string', enum: ['none', 'periods', 'note', 'normal'] }, periods: { type: 'array', items: { type: 'string' }, description: 'Period labels lost' },
+    }, required: ['date', 'title', 'effect'] } } }, required: ['items'] } },
+    maxTokens: 3000,
+  });
+  return r.items || [];
+}

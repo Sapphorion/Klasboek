@@ -33,7 +33,7 @@ function panel(l, save, draw, m) {
     (dayEvents.length || nextTest) ? h('div', { class: 'lp-events' },
       dayEvents.map(e => h('a', { class: 'ev-row', href: '#calendar/' + e.date, onclick: () => m.close(), style: { '--c': typeOf(e.type).colour } }, h('span', { class: 'ev-type' }, 'Today · ' + typeOf(e.type).label), h('strong', {}, eventLabel(e)))),
       nextTest && !dayEvents.includes(nextTest) ? h('a', { class: 'ev-row', href: '#calendar/' + nextTest.date, onclick: () => m.close(), style: { '--c': typeOf(nextTest.type).colour } }, h('span', { class: 'ev-type' }, `Coming up · ${fmtLong(nextTest.date)}`), h('strong', {}, eventLabel(nextTest))) : null) : null,
-    h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }), `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`),
+    h('div', { class: 'meta-line' }, h('span', { class: 'swatch', style: { background: s?.colour || '#777' } }), !l.date ? 'Not on the planner yet: drag it from “Needs a period” onto a period.' : `${fmtLong(l.date)} · Period ${period?.label || ''}${period?.start ? ' (' + period.start + '–' + period.end + ', ' + minutesBetween(period.start, period.end) + ' min)' : ''}`),
     h('div', { class: 'form-grid' },
       field('Lesson title', h('input', { value: l.title || '', oninput: e => { l.title = e.target.value; save(); m.el.querySelector('header h2').textContent = l.title; } })),
       field('Subject', h('select', { onchange: e => { l.subjectId = e.target.value; save(); draw(); } }, state.subjects.map(x => h('option', { value: x.id, selected: x.id === l.subjectId }, subjectLabel(x))))),

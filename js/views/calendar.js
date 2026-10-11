@@ -6,6 +6,7 @@ import { aiReadCalendar, aiReady, aiUnavailableReason } from '../ai.js';
 import { today, parse, iso, addDays, mondayOf, fmt, fmtLong, inTerm } from '../dates.js';
 import { EVENT_TYPES, typeOf, eventsOn, noTeachingOn, byDateThenType, eventLabel, allEvents } from '../events.js';
 import { shrinkImage } from './timetable.js';
+import { afterTeachingChange, changeFor } from '../adjust.js';
 
 let month = today().slice(0, 7); // 'YYYY-MM'
 let selected = today();
@@ -128,37 +129,68 @@ function sources() {
     h('ul', {}, [...by].map(([src, n]) => h('li', { class: 'row between' }, h('span', {}, h('strong', {}, src), h('span', { class: 'muted small' }, ` · ${n} event${n > 1 ? 's' : ''}`)),
       h('button', { class: 'btn ghost sm danger', onclick: async () => {
         if (!await confirmBox(`Remove all ${n} events from ${src}? Use this before uploading a newer version.`, 'Remove events')) return;
-        await deleteEvents(state.events.filter(e => (e.source || 'Added by hand') === src).map(e => e.id)); toast('Events removed.');
+        const gone = state.events.filter(e => (e.source || 'Added by hand') === src);
+        await deleteEvents(gone.map(e => e.id)); toast('Events removed.');
+        const freed = gone.filter(e => e.noTeaching || (e.blockedPeriods || []).length).map(e => ({ from: e.date, to: e.endDate || e.date }));
+        if (freed.length) afterTeachingChange({ freed }, 'Days that had no lessons are free again.');
       } }, 'Remove')))));
 }
 
 // ---------- Event editor ----------
 function editEvent(e) {
   const isNew = !e.id;
-  const f = { title: '', type: 'event', date: today(), endDate: '', time: '', subjectId: '', grade: '', cls: '', notes: '', noTeaching: false, ...e };
-  const nt = h('input', { type: 'checkbox', checked: !!f.noTeaching, onchange: ev => f.noTeaching = ev.target.checked });
+  const before = isNew ? null : JSON.parse(JSON.stringify(e));
+  const f = { title: '', type: 'event', date: today(), endDate: '', time: '', subjectId: '', grade: '', cls: '', notes: '', noTeaching: false, blockedPeriods: [], ...e };
+  f.blockedPeriods = [...(f.blockedPeriods || [])];
+  const effect = teachingEffect(f);
   const body = h('form', { class: 'form-grid', onsubmit: async ev => {
     ev.preventDefault();
     if (!f.title.trim()) { toast('Give the event a title.', 'error'); return; }
     if (f.endDate && f.endDate < f.date) { toast('The end date is before the start date.', 'error'); return; }
-    await saveEvent({ ...f, title: f.title.trim(), endDate: f.endDate && f.endDate !== f.date ? f.endDate : '', source: f.source || '' });
+    const saved = await saveEvent({ ...f, title: f.title.trim(), endDate: f.endDate && f.endDate !== f.date ? f.endDate : '', source: f.source || '' });
     m.close(); toast(isNew ? 'Event added.' : 'Event saved.');
+    afterTeachingChange(changeFor(before, saved), `“${saved.title}” changes teaching time.`);
   } },
     fld('Title', h('input', { value: f.title, required: true, placeholder: 'e.g. Gr 10 Mathematics test', oninput: ev => f.title = ev.target.value }), true),
-    fld('Type', h('select', { onchange: ev => { f.type = ev.target.value; if (f.type === 'holiday') { f.noTeaching = true; nt.checked = true; } } }, EVENT_TYPES.map(t => h('option', { value: t.id, selected: t.id === f.type }, t.label)))),
+    fld('Type', h('select', { onchange: ev => { f.type = ev.target.value; if (f.type === 'holiday') effect.set('none'); } }, EVENT_TYPES.map(t => h('option', { value: t.id, selected: t.id === f.type }, t.label)))),
     fld('Date', h('input', { type: 'date', value: f.date, required: true, onchange: ev => f.date = ev.target.value })),
     fld('Until (optional)', h('input', { type: 'date', value: f.endDate || '', onchange: ev => f.endDate = ev.target.value })),
     fld('Time (optional)', h('input', { value: f.time, placeholder: 'e.g. 08:00–10:00', oninput: ev => f.time = ev.target.value })),
     fld('Subject (for tests and exams)', h('select', { onchange: ev => f.subjectId = ev.target.value }, h('option', { value: '' }, 'Not one of my subjects'), state.subjects.map(s => h('option', { value: s.id, selected: s.id === f.subjectId }, subjectLabel(s))))),
     fld('Grade', h('input', { value: f.grade, placeholder: 'e.g. 10', oninput: ev => f.grade = ev.target.value.trim() })),
     fld('Notes', h('textarea', { rows: 2, oninput: ev => f.notes = ev.target.value }, f.notes || ''), true),
-    h('label', { class: 'check', style: { gridColumn: '1 / -1' } }, nt, 'No normal teaching on these days (the planner blocks them off)'),
+    effect.el,
     h('div', { class: 'row between', style: { gridColumn: '1 / -1' } },
-      isNew ? h('span') : h('button', { type: 'button', class: 'btn ghost danger sm', onclick: async () => { if (await confirmBox(`Delete “${f.title}”?`)) { await deleteEvents([f.id]); m.close(); toast('Event deleted.'); } } }, icon('trash', 16), 'Delete'),
+      isNew ? h('span') : h('button', { type: 'button', class: 'btn ghost danger sm', onclick: async () => { if (await confirmBox(`Delete “${f.title}”?`)) { await deleteEvents([f.id]); m.close(); toast('Event deleted.'); afterTeachingChange(changeFor(before, null), `“${f.title}” was removed, so that time is free again.`); } } }, icon('trash', 16), 'Delete'),
       h('button', { class: 'btn primary', type: 'submit' }, isNew ? 'Add event' : 'Save event')),
   );
   const m = modal(isNew ? 'Add an event' : 'Edit event', body);
 }
+// "Effect on teaching": normal lessons / no lessons all day / some periods are lost.
+export function teachingEffect(f) {
+  const val = () => f.noTeaching ? 'none' : (f.blockedPeriods || []).length ? 'periods' : 'normal';
+  const el = h('div', { class: 'field effect', style: { gridColumn: '1 / -1' } });
+  const draw = () => {
+    const v = val();
+    el.replaceChildren(h('span', { class: 'lbl' }, 'Effect on teaching'),
+      h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Effect on teaching' }, [['normal', 'Normal lessons'], ['none', 'No lessons all day'], ['periods', 'Some periods are lost']].map(([k, l]) =>
+        h('button', { type: 'button', role: 'radio', 'aria-checked': String(v === k), onclick: () => set(k) }, l))),
+      v === 'periods' ? h('div', { class: 'chips' }, state.timetable.periods.map(p => h('label', { class: 'chip' }, h('input', { type: 'checkbox', checked: f.blockedPeriods.includes(p.id), onchange: e => {
+        f.blockedPeriods = e.target.checked ? [...f.blockedPeriods, p.id] : f.blockedPeriods.filter(x => x !== p.id);
+        if (!f.blockedPeriods.length) { f.noTeaching = false; draw(); }
+      } }), `P${p.label}${p.start ? ' ' + p.start : ''}`))) : null,
+      h('span', { class: 'hint' }, v === 'normal' ? 'The planner stays as it is. The event shows as a note.' : 'The planner blocks this time and moves lessons planned in it to the class’s next free period.'));
+  };
+  const set = k => {
+    f.noTeaching = k === 'none';
+    if (k !== 'periods') f.blockedPeriods = [];
+    else if (!f.blockedPeriods.length) f.blockedPeriods = state.timetable.periods.slice(-3).map(p => p.id);
+    draw();
+  };
+  draw();
+  return { el, set };
+}
+
 const fld = (label, input, wide) => h('label', { class: 'field', style: wide ? { gridColumn: '1 / -1' } : {} }, h('span', { class: 'lbl' }, label), input);
 
 // ---------- Import ----------
@@ -241,6 +273,8 @@ function reviewImport(file, kind, res) {
     await saveEvents(list);
     await addMaterial(file, { kind: 'calendar' }).catch(() => {});
     m.close();
+    const blocked = list.filter(e => e.noTeaching).map(e => ({ from: e.date, to: e.endDate || e.date }));
+    if (blocked.length) setTimeout(() => afterTeachingChange({ blocked }, 'Some of the new events have no lessons.'), 400);
     const first = list.map(e => e.date).sort()[0];
     month = first.slice(0, 7); selected = first; mode = 'month'; rerender();
     toast(`Saved ${list.length} event${list.length > 1 ? 's' : ''}. The original file is in Materials.`);
