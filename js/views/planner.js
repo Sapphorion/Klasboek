@@ -49,6 +49,7 @@ function moreMenu(tw, days) {
       item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
       item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),
       item('month', 'Upload year planner or test timetable', () => { location.hash = 'calendar/' + weekStart; }),
+      item('swap', 'Google or Outlook calendar', () => import('./extcal.js').then(x => x.openExternalCalendars())),
       item('check', 'Check grades and colours', openTidy),
       item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
     ));

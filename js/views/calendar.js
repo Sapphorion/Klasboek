@@ -19,7 +19,8 @@ export function renderCalendar(root, [date]) {
   setCalendarDate(date);
   const page = () => h('div', { class: 'calendar-page' },
     h('div', { class: 'toolbar' }, h('div', { class: 'week-title' }, h('h1', {}, 'School calendar'),
-      h('span', { class: 'muted' }, 'Tap a day to see it. “Change this day” for a half day, lost periods or no school: the planner moves lessons for you.'))),
+      h('span', { class: 'muted' }, 'Tap a day to see it. “Change this day” for a half day, lost periods or no school: the planner moves lessons for you.')),
+      h('button', { class: 'btn', onclick: () => import('./extcal.js').then(x => x.openExternalCalendars()) }, icon('swap'), 'Google / Outlook')),
     calendarBody({
       onOpenWeek: d => { location.hash = 'planner/week/' + mondayOf(d); },
       onDayMenu: d => openDayMenu(d, mondayOf(d)),
@@ -45,7 +46,7 @@ function view() {
 
   const status = h('div', { 'aria-live': 'polite' });
   const upload = kind => dropZone({
-    accept: '.pdf,.docx,.xlsx,.xls,.csv,image/*',
+    accept: '.pdf,.docx,.xlsx,.xls,.csv,.ics,image/*',
     label: kind === 'planner' ? 'Upload the year planner' : 'Upload a test or exam timetable',
     hint: 'PDF, Word, Excel, or a photo (read by AI)',
     onFiles: ([file]) => importFile(file, kind, status),
@@ -224,6 +225,14 @@ function matchEventSubject(e) {
 async function importFile(file, kind, status) {
   const year = state.settings.year || new Date().getFullYear();
   status.replaceChildren(h('span', { class: 'spinner' }), ` Reading ${file.name}…`);
+  if (/\.(ics|zip)$/i.test(file.name)) {
+    try {
+      const { parseIcs, icsTextsFrom } = await import('../ics.js');
+      const events = (await icsTextsFrom(file)).flatMap(t => parseIcs(t, { from: `${year}-01-01`, to: `${year}-12-31`, source: 'Calendar file (Google/Outlook)' }));
+      status.replaceChildren(); reviewImport(file, 'external', { events, text: '', ai: true });
+    } catch (err) { status.replaceChildren(h('p', { class: 'error' }, err.message)); }
+    return;
+  }
   try {
     let res;
     try { res = await readCalendarFile(file, kind, year); }
@@ -240,19 +249,21 @@ async function importFile(file, kind, status) {
   } catch (err) { status.replaceChildren(h('p', { class: 'error' }, err.message)); }
 }
 
+export function reviewEvents(file, events, kind = 'external') { reviewImport(file, kind, { events, text: '', ai: true }); }
+
 function reviewImport(file, kind, res) {
   let rows = prep(res.events);
   function prep(list) {
     return list.map(e => {
       const subjectId = matchEventSubject(e);
-      const dup = state.events.some(x => x.date === e.date && x.title.toLowerCase() === e.title.toLowerCase());
+      const dup = state.events.some(x => (e.extUid && x.extUid === e.extUid) || (x.date === e.date && x.title.toLowerCase() === e.title.toLowerCase()));
       // In a whole-school exam timetable, keep only papers for subjects you teach.
       const keep = !dup && (kind !== 'assessments' || !!subjectId || !['test', 'exam'].includes(e.type));
       return { ...e, subjectId, include: keep, dup };
     });
   }
   const body = h('div', {});
-  const m = modal(`Check the ${kind === 'planner' ? 'year planner' : 'test and exam timetable'}`, body, { wide: true });
+  const m = modal(kind === 'external' ? 'Check the events from Google or Outlook' : `Check the ${kind === 'planner' ? 'year planner' : 'test and exam timetable'}`, body, { wide: true });
   const draw = () => {
     const n = rows.filter(r => r.include).length;
     const mine = rows.filter(r => r.subjectId).length;
@@ -290,7 +301,7 @@ function reviewImport(file, kind, res) {
     count();
   };
   const saveBtn = h('button', { class: 'btn primary', onclick: async () => {
-    const list = rows.filter(r => r.include && r.date && r.title.trim()).map(({ include, dup, subject, ...e }) => ({ ...e, title: e.title.trim(), endDate: e.endDate && e.endDate > e.date ? e.endDate : '', notes: e.notes || '', cls: '', source: file.name }));
+    const list = rows.filter(r => r.include && r.date && r.title.trim()).map(({ include, dup, subject, ...e }) => ({ ...e, title: e.title.trim(), endDate: e.endDate && e.endDate > e.date ? e.endDate : '', notes: e.notes || '', cls: '', source: e.source || file.name }));
     if (!list.length) { toast('Tick at least one event to save.', 'error'); return; }
     await saveEvents(list);
     await addMaterial(file, { kind: 'calendar' }).catch(() => {});

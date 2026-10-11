@@ -739,3 +739,7 @@ tr.warn-row td { color: var(--warn); font-weight: 700; }
 .diary-page .week-nav { flex-wrap: wrap; }
 input.diary-pick { width: auto; }
 .diary-links { gap: 1rem; margin-top: .6rem; }
+.ext-sec { display: grid; gap: .6rem; margin: 0 0 1rem; }
+.ext-sec h3 { margin: 0; display: flex; gap: .4rem; align-items: center; }
+.ext-steps summary { cursor: pointer; font-weight: 700; color: var(--blue); }
+.ext-steps ol { margin: .4rem 0 0; padding-left: 1.2rem; display: grid; gap: .25rem; }
