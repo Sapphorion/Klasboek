@@ -29,8 +29,8 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; font: 16px/1.5 var(--f-body); color: var(--ink); background: var(--paper); }
+html { -webkit-text-size-adjust: 100%; font-size: calc(100% * var(--ui-scale, 1)); }
+body { margin: 0; font: 1rem/1.5 var(--f-body); color: var(--ink); background: var(--paper); }
 h1, h2, h3, h4 { font-family: var(--f-head); font-weight: 600; line-height: 1.15; margin: 0 0 .4em; letter-spacing: -.01em; }
 h1 { font-size: 1.75rem; font-weight: 800; }
 h2 { font-size: 1.25rem; }
@@ -766,3 +766,4 @@ code.copyable { background: #EEF2EF; padding: .1rem .35rem; border-radius: 4px; 
 .day-events .pill span { overflow: hidden; text-overflow: ellipsis; }
 .tt-day-label, .dh-diary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c-act { white-space: nowrap; }
+.size-seg button { min-width: 4.8rem; }
