@@ -757,3 +757,12 @@ code.copyable { background: #EEF2EF; padding: .1rem .35rem; border-radius: 4px; 
 .acct-dot.gh { background: #24292f; }
 .account-sec .form-grid input { min-width: 0; }
 .ext-steps ul { margin: .3rem 0 0; padding-left: 1.1rem; display: grid; gap: .2rem; }
+
+/* Day headings never spill into the lesson columns */
+.week-grid > * { min-width: 0; }
+.day-head { overflow: hidden; }
+.day-events { display: grid; gap: 3px; min-width: 0; }
+.day-events .pill { display: block; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+.day-events .pill span { overflow: hidden; text-overflow: ellipsis; }
+.tt-day-label, .dh-diary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-act { white-space: nowrap; }

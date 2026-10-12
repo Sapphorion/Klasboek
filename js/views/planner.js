@@ -89,7 +89,7 @@ function view() {
   const periods = state.timetable.periods;
   const grid = h('div', {
     class: 'week-grid ' + (rows ? 'rows' : 'cols'), role: 'grid', 'aria-label': 'Week timetable',
-    style: { gridTemplateColumns: rows ? `9.5rem repeat(${periods.length}, minmax(8rem, 1fr))` : `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` },
+    style: { gridTemplateColumns: rows ? `11rem repeat(${periods.length}, minmax(8rem, 1fr))` : `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` },
   });
   const dayHead = d => {
     const isToday = d.date === today();
