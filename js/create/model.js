@@ -4,6 +4,7 @@
 // Slides, rubrics and flashcards have their own simple shapes.
 import { state, subjectById, atpById } from '../state.js';
 import { graphDefaults, cleanSvg } from './graph.js';
+import { repair } from '../ai.js';
 
 export const TYPES = [
   { id: 'test', label: 'Test or exam', icon: 'doc', blurb: 'Sections, mark allocation, memo and a cognitive-level grid.' },
@@ -212,6 +213,7 @@ export function toAiJson(c) {
 }
 
 export function applyAi(c, r, previous = null) {
+  r = repair(r || {});
   if (r.title) c.title = r.title;
   if (isBlockDoc(c)) {
     if (c.type === 'test') { if (r.time) c.meta.time = r.time; if (r.instructions?.length) c.meta.instructions = r.instructions; }

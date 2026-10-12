@@ -18,6 +18,30 @@ export function aiUnavailableReason() {
   return '';
 }
 
+// Models sometimes send a list as a JSON string ("[{…}]"), or as an object with numbered keys.
+// Put lists back into shape wherever one is expected, so nothing downstream trips over it.
+const LIST_KEYS = new Set(['blocks', 'slides', 'cards', 'criteria', 'levels', 'options', 'items', 'terms', 'rows', 'fns', 'points', 'instructions', 'bullets', 'descriptors',
+  'questions', 'phases', 'objectives', 'vocabulary', 'sections', 'keyPoints', 'resources', 'events', 'cells', 'periods', 'topics', 'weeks', 'notes_sections']);
+function asList(v) {
+  if (Array.isArray(v)) return v;
+  if (v == null || v === '') return [];
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (/^[\[{]/.test(t)) { try { return asList(JSON.parse(t)); } catch { /* cut off or not JSON */ } }
+    if (/^\[/.test(t)) throw new Error('The AI’s answer came back incomplete. Please try again (a shorter piece, or fewer marks, helps).');
+    return t.split('\n').map(x => x.trim()).filter(Boolean);
+  }
+  if (typeof v === 'object') { const keys = Object.keys(v); if (keys.length && keys.every(k => /^\d+$/.test(k))) return keys.sort((a, b) => a - b).map(k => v[k]); return [v]; }
+  return [v];
+}
+export function repair(x, key = '') {
+  if (LIST_KEYS.has(key)) x = asList(x);
+  if (Array.isArray(x)) return x.map(v => repair(v, key === 'rows' ? 'row' : ''));
+  if (key === 'row' && !Array.isArray(x)) return asList(x);
+  if (x && typeof x === 'object') { for (const k of Object.keys(x)) x[k] = repair(x[k], k); return x; }
+  return x;
+}
+
 async function call({ system, content, tool, maxTokens = 8000 }) {
   const reason = aiUnavailableReason();
   if (reason) throw new Error(reason);
@@ -29,10 +53,10 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
     const j = await post({ system: sys, messages, tool, maxTokens });
     const block = j.content?.find(b => b.type === 'tool_use' && b.name === tool.name);
     if (j.stop_reason === 'max_tokens') throw new Error('The response was too long and got cut off. Try again, or pick a bigger model in Settings.');
-    if (block) return block.input;
+    if (block) return repair(block.input);
     const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const parsed = jsonFrom(text);
-    if (parsed) return parsed;
+    if (parsed) return repair(parsed);
     messages.push({ role: 'assistant', content: j.content?.length ? j.content : [{ type: 'text', text: '…' }] },
       { role: 'user', content: `Please give the result by calling the ${tool.name} tool now.` });
   }
