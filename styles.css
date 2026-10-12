@@ -767,3 +767,35 @@ code.copyable { background: #EEF2EF; padding: .1rem .35rem; border-radius: 4px; 
 .tt-day-label, .dh-diary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c-act { white-space: nowrap; }
 .size-seg button { min-width: 4.8rem; }
+
+/* ---------- Tablets (landscape and portrait) ---------- */
+.planner-body > *, .tray { min-width: 0; }
+dialog.modal { max-width: calc(100vw - 1.5rem); }
+dialog.modal .modal-body { min-width: 0; overflow-x: hidden; }
+dialog.modal .modal-body > * { min-width: 0; }
+.diary-lessons textarea { min-height: 3.2rem; }
+@media (min-width: 821px) and (max-width: 1180px) {
+  .shell { grid-template-columns: 5.25rem 1fr; background: linear-gradient(to right, var(--chalk) 5.25rem, transparent 5.25rem); }
+  .rail { padding: 1rem .35rem; }
+  .brand { justify-content: center; padding: 0 0 1rem; }
+  .brand span { display: none; }
+  #nav a { flex-direction: column; gap: .2rem; padding: .55rem .2rem; text-align: center; font-size: .7rem; }
+  #nav a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--marker); }
+  #nav .long { display: none; }
+  #nav .short { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .rail-foot { padding: .25rem 0; justify-items: center; text-align: center; }
+  .net { font-size: 0; gap: 0; }
+  .net .dot { width: 10px; height: 10px; }
+  .install { font-size: .72rem; padding: .45rem .3rem; width: 100%; }
+  .sync-badge { font-size: .65rem; flex-direction: column; gap: .1rem; }
+  .app-version { font-size: .62rem; }
+  main { padding: 1.25rem 1.5rem 4rem; }
+  .toolbar { gap: .75rem; }
+}
+.rail { overflow-y: auto; scrollbar-width: none; }
+@media (max-height: 700px) and (min-width: 821px) {
+  #nav a { padding-top: .4rem; padding-bottom: .4rem; }
+  .brand { padding-bottom: .6rem; }
+}
+.size-seg { display: inline-flex; flex-wrap: wrap; width: auto; justify-self: start; }
+.size-seg button { flex: 0 0 auto; }

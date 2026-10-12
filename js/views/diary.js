@@ -98,7 +98,7 @@ function dayView() {
         return h('li', { style: { '--subj': s?.colour || '#777' } },
           h('button', { class: 'link strong', onclick: () => openLesson(l.id) }, `P${p?.label ?? '?'} · ${classLabel(s, l.cls)}`),
           h('span', {}, l.title + (l.subtopic ? ` · ${l.subtopic}` : '')),
-          h('textarea', { rows: 1, 'data-keep': 'refl-' + l.id, placeholder: 'How did it go? What to carry over?', 'aria-label': `How did ${l.title} go?`, onchange: e => { l.reflection = e.target.value.trim(); saveLesson(l); } }, l.reflection || ''));
+          h('textarea', { rows: 2, 'data-keep': 'refl-' + l.id, placeholder: 'How did it go? What to carry over?', 'aria-label': `How did ${l.title} go?`, onchange: e => { l.reflection = e.target.value.trim(); saveLesson(l); } }, l.reflection || ''));
       })) : h('p', { class: 'muted small' }, inTerm(date) ? 'No lessons planned for this day.' : 'No school today.')),
     h('section', { class: 'card-sec' }, h('div', { class: 'row between' }, h('h2', {}, 'On the calendar'),
         h('button', { class: 'btn ghost sm', onclick: () => openDayMenu(date, mondayOf(date)) }, icon('pen', 16), 'Change this day')),
