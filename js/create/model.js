@@ -111,7 +111,7 @@ export function blankCreation(type, { subjectId = '', grade = '', title = '', at
   const c = {
     type, title: title || typeInfo(type).label, subjectId, grade: grade || subj?.grade || '', language: subj?.language || 'English',
     source: { atpId, text: sourceText },
-    design: { theme: type === 'test' ? 'classic' : 'modern', size: 'normal', header: type !== 'notes' && type !== 'slides', memo: ['test', 'worksheet'].includes(type), grid: type === 'test', cover: false, layout: 'cards' },
+    design: { theme: type === 'test' ? 'classic' : 'modern', size: 'normal', header: type !== 'notes' && type !== 'slides', memo: ['test', 'worksheet'].includes(type), grid: type === 'test', cover: type === 'test' && state.settings.defaultCover ? state.settings.defaultCover : false, layout: 'cards' },
     meta: { time: type === 'test' ? 60 : 0, instructions: [], levelNames: preset.names, levelTargets: preset.targets, seed: Math.floor(Math.random() * 1e6) },
   };
   if (isBlockDoc(c)) c.blocks = [];

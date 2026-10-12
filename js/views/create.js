@@ -10,6 +10,7 @@ import { THEMES, themeCss, renderCreation, printCreation, rubricMax } from '../c
 import { exportCreationDocx, exportCreationPptx } from '../create/export.js';
 import { checkFor } from '../aicheck.js';
 import { graphSvg, cleanSvg, rasterise, compile } from '../create/graph.js';
+import { covers, coverById, openCoverEditor, coversSection, withCover } from '../create/covers.js';
 import { openChecker } from './checker.js';
 
 export function renderCreate(root, [id]) {
@@ -46,7 +47,7 @@ function listPage() {
     h('div', { class: 'type-grid' }, TYPES.map(t => h('button', { class: 'type-card', onclick: () => newDialog(t.id) },
       h('span', { class: 'tc-icon' }, icon(t.icon, 22)), h('strong', {}, t.label),
       h('ul', { class: 'tc-gets' }, (GETS[t.id] || []).map(g => h('li', {}, g))))))));
-  page.append(materialsList());
+  page.append(coversSection(), materialsList());
   return page;
 }
 
@@ -327,7 +328,7 @@ function designer(root, c) {
   const titleIn = h('input', { class: 'title-input', value: c.title, 'aria-label': 'Title', oninput: e => { c.title = e.target.value; changed(); } });
   const exportBtns = h('div', { class: 'row wrap' },
     h('button', { class: 'btn', onclick: () => printCreation(c) }, icon('print'), c.type === 'slides' ? 'Print handout / PDF' : 'Print / PDF'),
-    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await rasterise(c))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)),
+    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await withCover(await rasterise(c)))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)),
     versionMenu());
   const d = c.design;
   const toggle = (key, label) => h('label', { class: 'chip' }, h('input', { type: 'checkbox', checked: !!d[key], onchange: e => { d[key] = e.target.checked; changed(); } }), label);
@@ -339,7 +340,7 @@ function designer(root, c) {
       ['test', 'worksheet', 'rubric'].includes(c.type) || (c.type === 'cards' && d.layout === 'wordsearch') ? toggle('header', 'Name and class lines') : null,
       ['test', 'worksheet'].includes(c.type) ? toggle('memo', 'Memo') : null,
       c.type === 'test' ? toggle('grid', 'Cognitive-level grid') : null,
-      c.type === 'test' ? toggle('cover', 'Cover page') : null,
+      ['test', 'worksheet'].includes(c.type) ? coverSelect() : null,
       ['test', 'worksheet'].includes(c.type) ? (() => { const chk = checkFor(c); return h('label', { class: 'chip', title: `Hidden instruction asks AI tools to use “${chk.word}” ${chk.n} times` }, h('input', { type: 'checkbox', checked: !!chk.on, onchange: e => { chk.on = e.target.checked; changed(); } }), `Hidden AI check (“${chk.word}”)`); })() : null,
       ['test', 'worksheet'].includes(c.type) ? h('button', { class: 'chip', onclick: () => openChecker(checkFor(c)) }, 'Check answers') : null,
       c.type === 'cards' && d.layout === 'wordsearch' ? h('button', { class: 'chip', onclick: () => { c.meta.seed = Math.floor(Math.random() * 1e6); changed(); } }, 'New puzzle') : null));
@@ -358,6 +359,21 @@ function designer(root, c) {
       toast('Changed. Use Undo if you prefer the old version.');
     } catch (e) { toast(e.message, 'error'); } finally { done(); }
   };
+
+  function coverSelect() {
+    const list = covers();
+    const val = d.cover === true ? 'generated' : typeof d.cover === 'string' && coverById(d.cover) ? d.cover : '';
+    return h('label', { class: 'chip cover-chip' }, 'Cover page',
+      h('select', { 'aria-label': 'Cover page', onchange: e => {
+        const v = e.target.value;
+        if (v === '__upload') { e.target.value = val; openCoverEditor(null, cv => { d.cover = cv.id; structural(); drawTop(); }); return; }
+        d.cover = v === 'generated' ? true : v || false; changed(); drawTop();
+      } },
+        h('option', { value: '', selected: !val }, 'None'),
+        c.type === 'test' ? h('option', { value: 'generated', selected: val === 'generated' }, 'Klasboek cover') : null,
+        list.map(cv => h('option', { value: cv.id, selected: val === cv.id }, cv.name)),
+        h('option', { value: '__upload' }, 'Upload the school’s cover sheet…')));
+  }
 
   function versionMenu() {
     const other = c.language === 'Afrikaans' ? ['en', 'English'] : ['af', 'Afrikaans'];
@@ -430,6 +446,7 @@ function designer(root, c) {
       h('summary', {}, 'Test details and cognitive levels'),
       h('div', { class: 'form-grid' },
         field('Time (minutes)', input(c.meta.time, v => c.meta.time = +v || 0, { type: 'number', min: 0 })),
+        field('Date written', input(c.meta.date || '', v => c.meta.date = v, { type: 'date' })),
         field('Instructions (one per line)', area((c.meta.instructions || []).join('\n'), v => c.meta.instructions = v.split('\n').map(s => s.trim()).filter(Boolean), 3))),
       h('div', { class: 'cog-edit' }, h('span', { class: 'lbl' }, 'Levels and targets (% of marks)'),
         ...[0, 1, 2, 3].map(i => h('div', { class: 'row' }, h('span', { class: 'muted' }, `${i + 1}.`),

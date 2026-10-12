@@ -56,7 +56,12 @@ export async function exportCreationDocx(c) {
     const nums = numberBlocks(blocks), secTot = sectionTotals(blocks), total = totalMarks(blocks);
     const assess = c.type !== 'notes';
     const ins = c.meta?.instructions || [];
-    if (c.type === 'test' && c.design?.cover) {
+    if (c.coverPng) {
+      const bytes = dataUrlBytes(c.coverPng);
+      const w = 624, hgt = Math.min(940, Math.round(w * (c.coverRatio || 1.414)));
+      kids.push(new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.ImageRun({ type: bytes.type, data: bytes.data, transformation: { width: Math.round(hgt / (c.coverRatio || 1.414)), height: hgt } })] }), pageBreak());
+    }
+    if (!c.coverPng && c.type === 'test' && c.design?.cover === true) {
       kids.push(para(state.settings.school || '', { bold: true, size: 28, align: D.AlignmentType.CENTER, before: 1200 }));
       kids.push(new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { before: 400, after: 100 }, children: [new D.TextRun({ text: subLine(c) || 'Subject', bold: true, size: sz(52), font: hf, color: col })] }));
       kids.push(new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { after: 500 }, children: [new D.TextRun({ text: c.title, bold: true, size: sz(36), font: hf })] }));

@@ -4,7 +4,7 @@ import { loadScript } from './ui.js';
 
 // ---------- File → raw content ----------
 let pdfjs;
-async function getPdfjs() {
+export async function getPdfjs() {
   if (!pdfjs) {
     pdfjs = await import('../vendor/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;

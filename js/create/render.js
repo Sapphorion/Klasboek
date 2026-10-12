@@ -5,6 +5,7 @@ import { esc } from '../ui.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
 import { checkFor, trapHtml } from '../aicheck.js';
 import { graphSvg } from './graph.js';
+import { coverById, coverHtml } from './covers.js';
 
 export const THEMES = [
   { id: 'classic', label: 'Classic', note: 'Formal, for tests and exams' },
@@ -55,6 +56,9 @@ export function themeCss() {
 .paper figure img{max-width:100%;height:auto}
 .paper figure svg{width:100%;height:auto;display:block}
 .paper .details{width:100%;margin:.2em 0 .9em}
+.paper .ucover{margin:-56px -58px 0;position:relative;container-type:inline-size;background:#fff}
+.paper .ucover img{width:100%;display:block}
+.paper .uc-f{position:absolute;transform:translateY(-50%);white-space:nowrap;color:#111;font-family:Arial,Helvetica,sans-serif;line-height:1}
 .paper .details th{background:#f1f4f2;width:16%;font-size:.9em}
 .paper .details td{width:17%}
 .paper figcaption{font-size:.85em;color:#4f5856;margin-top:.3em}
@@ -113,7 +117,7 @@ export function themeCss() {
 .paper.t-ink .box{border-width:1px}
 .paper.t-ink .slide.title{background:#fff;color:#111;border:2px solid #111}
 .paper.t-ink .slide.title h2{color:#111}
-@media print{.paper{width:auto;padding:0}.paper .pb{border:0;margin:0;break-after:page}.paper .pb:after{display:none}.paper .cover{min-height:0;break-after:page}.paper .page{break-after:page}}
+@media print{.paper .ucover{margin:0}.paper{width:auto;padding:0}.paper .pb{border:0;margin:0;break-after:page}.paper .pb:after{display:none}.paper .cover{min-height:0;break-after:page}.paper .page{break-after:page}}
 `;
 }
 
@@ -154,21 +158,24 @@ function renderDoc(c) {
   const assess = c.type !== 'notes';
   const d = c.design || {};
   let h = '';
-  if (c.type === 'test' && d.cover) {
+  const upCover = typeof d.cover === 'string' ? coverById(d.cover) : null;
+  if (upCover) h += coverHtml(upCover, c) + '<div class="pb"></div>';
+  if (!upCover && c.type === 'test' && d.cover === true) {
     const s = state.settings;
     h += `<div class="cover">${s.logo ? `<img src="${s.logo}" alt="">` : ''}<div>${esc(s.school || '')}</div>
       <div class="big">${esc(subLine(c) || 'Subject')}</div><h1>${esc(c.title)}</h1>
       <table><tr><th>Date</th><td></td><th>Time</th><td>${c.meta?.time ? c.meta.time + ' minutes' : ''}</td></tr><tr><th>Marks</th><td>${total}</td><th>Examiner</th><td>${esc(s.teacherName || '')}</td></tr></table>
       ${learnerBox(0)}
       ${(c.meta?.instructions || []).length ? `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>` : ''}</div><div class="pb"></div>`;
-  } else {
+  }
+  if (upCover || !(c.type === 'test' && d.cover === true)) {
     h += schoolBar();
     h += `<h1>${esc(c.title)}</h1>`;
     const sub = subLine(c);
     if (sub) h += `<p class="sub">${esc(sub)}</p>`;
-    if (c.type === 'test') {
+    if (c.type === 'test' && !upCover) {
       const subj = subjectById(c.subjectId);
-      h += `<table class="details"><tr><th>Subject</th><td>${esc(subj?.name || '')}</td><th>Grade</th><td>${esc(c.grade || '')}</td><th>Date</th><td></td></tr><tr><th>Time</th><td>${c.meta?.time ? c.meta.time + ' min' : ''}</td><th>Marks</th><td>${total}</td><th>Teacher</th><td>${esc(state.settings.teacherName || '')}</td></tr></table>`;
+      h += `<table class="details"><tr><th>Subject</th><td>${esc(subj?.name || '')}</td><th>Grade</th><td>${esc(c.grade || '')}</td><th>Date</th><td>${c.meta?.date ? esc(new Date(c.meta.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })) : ''}</td></tr><tr><th>Time</th><td>${c.meta?.time ? c.meta.time + ' min' : ''}</td><th>Marks</th><td>${total}</td><th>Teacher</th><td>${esc(state.settings.teacherName || '')}</td></tr></table>`;
     }
     if (d.header && assess) h += learnerBox(total);
     if (c.type === 'test' && (c.meta?.instructions || []).length) h += `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>`;
