@@ -4,6 +4,7 @@ import { state, subjectById } from '../state.js';
 import { esc } from '../ui.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
 import { checkFor, trapHtml } from '../aicheck.js';
+import { graphSvg } from './graph.js';
 
 export const THEMES = [
   { id: 'classic', label: 'Classic', note: 'Formal, for tests and exams' },
@@ -52,6 +53,10 @@ export function themeCss() {
 .paper .box.warn{border-color:#c8372d}.paper .box.warn h3{color:#c8372d}
 .paper figure{margin:.8em auto;text-align:center;break-inside:avoid}
 .paper figure img{max-width:100%;height:auto}
+.paper figure svg{width:100%;height:auto;display:block}
+.paper .details{width:100%;margin:.2em 0 .9em}
+.paper .details th{background:#f1f4f2;width:16%;font-size:.9em}
+.paper .details td{width:17%}
 .paper figcaption{font-size:.85em;color:#4f5856;margin-top:.3em}
 .paper .ph{border:2px dashed #b8c2be;color:#7a8582;padding:2em;text-align:center;border-radius:6px}
 .paper .pb{border-top:2px dashed #c4ccc8;margin:2em -58px;position:relative;height:0}
@@ -161,7 +166,10 @@ function renderDoc(c) {
     h += `<h1>${esc(c.title)}</h1>`;
     const sub = subLine(c);
     if (sub) h += `<p class="sub">${esc(sub)}</p>`;
-    if (c.type === 'test') h += `<div class="meta">${c.meta?.time ? `<span>Time: ${c.meta.time} minutes</span>` : ''}<span>Total: ${total} marks</span></div>`;
+    if (c.type === 'test') {
+      const subj = subjectById(c.subjectId);
+      h += `<table class="details"><tr><th>Subject</th><td>${esc(subj?.name || '')}</td><th>Grade</th><td>${esc(c.grade || '')}</td><th>Date</th><td></td></tr><tr><th>Time</th><td>${c.meta?.time ? c.meta.time + ' min' : ''}</td><th>Marks</th><td>${total}</td><th>Teacher</th><td>${esc(state.settings.teacherName || '')}</td></tr></table>`;
+    }
     if (d.header && assess) h += learnerBox(total);
     if (c.type === 'test' && (c.meta?.instructions || []).length) h += `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>`;
   }
@@ -185,6 +193,8 @@ function renderDoc(c) {
         h += `<div${at}><div class="q"><span class="n">${nums.get(i)}</span><div><div class="body">${md(b.q) || '<span class="ph" style="display:block;padding:.4em">Type the question</span>'}</div>${opts}</div><span class="mk">(${+b.marks || 0})</span></div>${linesHtml(autoLines(b))}</div>`;
         break;
       }
+      case 'graph': h += `<figure${at} style="width:${b.width || 60}%">${graphSvg(b)}${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}</figure>`; break;
+      case 'diagram': h += `<figure${at} style="width:${b.width || 60}%">${b.svg || `<div class="ph">Diagram: ${esc(b.prompt || 'describe it and tap Draw it')}</div>`}${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}</figure>`; break;
       case 'image': h += `<figure${at} style="width:${b.width || 60}%">${b.src ? `<img src="${b.src}" alt="${esc(b.caption || '')}">` : '<div class="ph">Add a picture</div>'}${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}</figure>`; break;
       case 'table': h += `<table${at}>${(b.rows || []).map((r, ri) => `<tr>${r.map(cell => ri === 0 ? `<th>${esc(cell)}</th>` : `<td>${md(cell)}</td>`).join('')}</tr>`).join('')}</table>`; break;
       case 'lines': h += `<div${at}>${linesHtml(+b.count || 0, true)}</div>`; break;
@@ -208,7 +218,7 @@ function renderMemo(c, nums, total) {
     if (b.type === 'section') h += `<tr><th colspan="${c.type === 'test' ? 4 : 3}">${nums.get(i)}${b.title ? ': ' + esc(b.title) : ''}</th></tr>`;
     if (b.type === 'question') h += `<tr><td>${nums.get(i)}</td><td>${md(b.answer) || '&nbsp;'}</td><td>${+b.marks || 0}</td>${c.type === 'test' ? `<td>${esc(names[(+b.cog || 1) - 1] || 'Level ' + (b.cog || 1))}</td>` : ''}</tr>`;
   });
-  h += `<tr><th></th><th>Total</th><th>${total}</th>${c.type === 'test' ? '<th></th>' : ''}</tr></table>`;
+  h += `<tr><th></th><th>Total</th><th>${total}</th>${c.type === 'test' ? '<th></th>' : ''}</tr></table><p class="sub" style="font-size:.85em">✓ = 1 mark</p>`;
   if (c.type === 'test' && c.design?.grid) {
     h += `<h2>Cognitive level analysis</h2><table><tr><th>Level</th><th>Marks</th><th>% of paper</th><th>Target %</th></tr>`;
     for (const r of cogGrid(c)) {
@@ -317,6 +327,6 @@ export function wordSearch(words, seed) {
 export function printCreation(c) {
   const w = window.open('', '_blank');
   if (!w) { alert('Allow pop-ups for this site to print.'); return; }
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.title)}</title><style>@page{size:A4;margin:14mm 14mm}body{margin:0}${themeCss()}</style></head><body>${renderCreation(c, { forPrint: true })}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.title)}</title><style>@page{size:A4;margin:14mm 14mm 16mm;@bottom-right{content:"Page " counter(page) " of " counter(pages);font:10px Arial,sans-serif;color:#666}}body{margin:0}${themeCss()}</style></head><body>${renderCreation(c, { forPrint: true })}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
   w.document.close();
 }

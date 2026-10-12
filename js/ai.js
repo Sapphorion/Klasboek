@@ -286,7 +286,7 @@ export async function aiReadNotice({ text, image, pdf }, year) {
 const BLOCK_ITEM = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['heading', 'text', 'list', 'box', 'vocab', 'section', 'question', 'table', 'pagebreak', 'image'] },
+    type: { type: 'string', enum: ['heading', 'text', 'list', 'box', 'vocab', 'section', 'question', 'table', 'pagebreak', 'image', 'graph', 'diagram'] },
     text: { type: 'string', description: 'Heading text, paragraph text (blank line between paragraphs, **bold** allowed), box text, or section instructions' },
     title: { type: 'string', description: 'Box title or section title (e.g. "Multiple choice")' },
     style: { type: 'string', enum: ['key', 'info', 'warn'], description: 'Box style' },
@@ -299,7 +299,13 @@ const BLOCK_ITEM = {
     options: { type: 'array', items: { type: 'string' }, description: 'For mcq: exactly 4 options, one correct' },
     answer: { type: 'string', description: 'Memo: the expected answer with mark allocation, e.g. "Photosynthesis ✓ (1)". For mcq give the letter and the option.' },
     rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Table rows; first row is the header' },
-    ref: { type: 'integer', description: 'For image blocks only: keep the ref you were given' },
+    ref: { type: 'integer', description: 'For image and diagram blocks you were given: keep the ref' },
+    fns: { type: 'array', items: { type: 'string' }, description: 'Graph block: up to 4 functions, e.g. "f(x) = x^2 - 4", "g(x) = 2x + 1", "y = 3sin x" (trig in degrees)' },
+    xmin: { type: 'number' }, xmax: { type: 'number' }, ymin: { type: 'number' }, ymax: { type: 'number' },
+    points: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, label: { type: 'string' } }, required: ['x', 'y'] }, description: 'Graph block: labelled points, e.g. turning point A' },
+    svg: { type: 'string', description: 'Diagram block: a simple, clean, black-and-white SVG line drawing (viewBox about 0 0 400 300, stroke black, white fill, readable text labels, no colour needed, no external images). Must be scientifically correct.' },
+    prompt: { type: 'string', description: 'Diagram block: one sentence describing what the drawing shows' },
+    caption: { type: 'string', description: 'Graph, diagram or image caption, e.g. "Figure 1"' },
   },
   required: ['type'],
 };
@@ -309,7 +315,7 @@ const RUBRIC_SCHEMA = { type: 'object', properties: { title: { type: 'string' },
 const CARDS_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, cards: { type: 'array', items: { type: 'object', properties: { term: { type: 'string', description: 'One word or a short phrase' }, meaning: { type: 'string', description: 'Clear, short definition for the grade' } }, required: ['term', 'meaning'] } } }, required: ['title', 'cards'] };
 const schemaFor = type => ({ test: DOC_SCHEMA, worksheet: DOC_SCHEMA, notes: DOC_SCHEMA, slides: SLIDES_SCHEMA, rubric: RUBRIC_SCHEMA, cards: CARDS_SCHEMA }[type]);
 
-const CREATE_SYSTEM = lang => `You are an experienced South African teacher creating CAPS-aligned classroom materials. Use South African contexts, names, places and Rand amounts where examples need them. Be accurate: every memo answer must be correct. Pitch language and difficulty at the grade given. ${lang && lang !== 'English' ? `Write everything in ${lang}.` : 'Write in South African English.'}`;
+const CREATE_SYSTEM = lang => `You are an experienced South African teacher creating CAPS-aligned classroom materials. Use South African contexts, names, places and Rand amounts where examples need them. Be accurate: every memo answer must be correct. Memo answers show the mark split with ticks, e.g. "x = 3 ✓ (1)" or "photosynthesis ✓ uses light energy ✓ (2)", and the ticks add up to the question's marks. When a question needs a graph, add a "graph" block right before it (functions and axis ranges). When it needs a labelled diagram (cell, circuit, apparatus, triangle, food web), add a "diagram" block with a clean SVG line drawing. Use them where a real paper would, not on every question. Pitch language and difficulty at the grade given. ${lang && lang !== 'English' ? `Write everything in ${lang}.` : 'Write in South African English.'}`;
 
 function brief(type, o) {
   const lv = (o.levelNames || []).map((n, i) => `${i + 1} = ${n} (target ${o.levelTargets?.[i] ?? '?'}% of marks)`).join('; ');
@@ -378,4 +384,16 @@ export async function aiLessonNotes(ctx) {
     tool: { name: 'save_notes', description: 'Save the notes', schema: NOTES_SCHEMA },
     maxTokens: 8000,
   });
+}
+
+// One labelled diagram as a clean SVG line drawing.
+export async function aiDiagram(prompt, o = {}) {
+  const r = await call({
+    system: CREATE_SYSTEM(o.language) + ' You draw clear, correct diagrams for school papers as simple SVG.',
+    content: `Draw this for a ${o.subject || ''} ${o.grade ? 'Grade ' + o.grade : ''} paper: ${prompt}
+Rules: black lines on white, stroke-width 2, viewBox about 0 0 400 300, labels in Arial 14px with label lines where needed, no colour unless asked, no external images or fonts. Leave label text blank (or use letters A, B, C…) if the question asks learners to identify the parts.`,
+    tool: { name: 'save_diagram', description: 'Save the drawing', schema: { type: 'object', properties: { svg: { type: 'string' }, caption: { type: 'string' } }, required: ['svg'] } },
+    maxTokens: 8000,
+  });
+  return { svg: r.svg || '', caption: r.caption || '' };
 }
