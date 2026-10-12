@@ -754,3 +754,6 @@ code.copyable { background: #EEF2EF; padding: .1rem .35rem; border-radius: 4px; 
 .sync-badge.ok { color: #9BE0B8; } .sync-badge.warn { color: var(--marker); }
 @media (max-width: 760px) { .account-sec input { min-width: 0; } }
 .account-sec .check { justify-self: start; justify-content: flex-start; width: auto; }
+.acct-dot.gh { background: #24292f; }
+.account-sec .form-grid input { min-width: 0; }
+.ext-steps ul { margin: .3rem 0 0; padding-left: 1.1rem; display: grid; gap: .2rem; }

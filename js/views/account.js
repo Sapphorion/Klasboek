@@ -1,44 +1,45 @@
 // Settings: Microsoft account and syncing between devices.
 import { h, icon, toast, confirmBox } from '../ui.js';
 import { clientId, setClientId, redirectUri, signIn, signOut, signedIn, account } from '../msauth.js';
-import { syncNow, syncInfo, onSync, autoSync, setAutoSync } from '../sync.js';
+import { syncNow, syncInfo, onSync, autoSync, setAutoSync, resetSyncState } from '../sync.js';
+import { ghConnect, ghConnected, ghInfo, ghDisconnect } from '../github.js';
 
 export function accountSection() {
   const sec = h('section', { class: 'card-sec account-sec' });
   const draw = () => {
     const s = syncInfo();
-    const kids = [h('h2', {}, 'Microsoft account and sync')];
-    if (signedIn()) {
+    const kids = [h('h2', {}, 'Sync between devices')];
+    if (ghConnected()) {
+      const g = ghInfo();
+      kids.push(
+        h('div', { class: 'acct-row' }, h('span', { class: 'acct-dot gh', 'aria-hidden': 'true' }, ghLogo()),
+          h('div', {}, h('strong', {}, `GitHub · ${g.owner}/${g.repo}`), h('div', { class: 'muted small' }, `Signed in as ${g.login}. Private repository.`))),
+        status(s), autoBox(),
+        h('div', { class: 'row wrap' }, syncBtn(),
+          h('a', { class: 'btn ghost', href: `https://github.com/${g.owner}/${g.repo}/commits`, target: '_blank', rel: 'noopener' }, 'Earlier versions'),
+          h('button', { class: 'btn ghost', onclick: async () => {
+            if (!await confirmBox('Disconnect GitHub on this device? Your work stays on this device and in the repository.', 'Disconnect')) return;
+            ghDisconnect(); resetSyncState(); draw(); window.dispatchEvent(new Event('klasboek-sync')); toast('Disconnected.');
+          } }, 'Disconnect')),
+        h('p', { class: 'muted small' }, 'On your other devices: Settings › Sync between devices › paste the same token and repository name. Every sync is saved in the repository’s history, so you can get an earlier version back. Your Claude API key and the token are never synced.'));
+    } else if (signedIn()) {
       const a = account();
       kids.push(
         h('div', { class: 'acct-row' }, h('span', { class: 'acct-dot', 'aria-hidden': 'true' }, (a.name || a.email || '?').slice(0, 1).toUpperCase()),
-          h('div', {}, h('strong', {}, a.name || a.email), h('div', { class: 'muted small' }, a.email))),
-        h('p', { class: 'small ' + (s.error || s.needsSignIn ? 'warn' : 'muted') },
-          s.needsSignIn ? 'Your sign-in has expired. Sign in again to keep syncing.' : s.error ? 'Last sync didn’t work: ' + s.error
-            : s.syncing ? 'Syncing…' : s.lastSync ? `Last synced ${new Date(s.lastSync).toLocaleString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.${s.dirty ? ' Some changes still to upload.' : ''}` : 'Not synced yet.'),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: autoSync(), onchange: e => { setAutoSync(e.target.checked); if (e.target.checked) syncNow(); } }), 'Sync automatically'),
+          h('div', {}, h('strong', {}, a.name || a.email), h('div', { class: 'muted small' }, `${a.email} · OneDrive`))),
+        status(s), autoBox(),
         h('div', { class: 'row wrap' },
           s.needsSignIn ? h('button', { class: 'btn primary', onclick: () => signIn({ hint: a.email }).catch(e => toast(e.message, 'error')) }, 'Sign in again') : null,
-          h('button', { class: 'btn', disabled: !navigator.onLine, onclick: async e => {
-            const b = e.currentTarget; b.disabled = true;
-            try { const r = await syncNow({ quiet: false }); toast({ pushed: 'Uploaded to OneDrive.', pulled: 'Updated from OneDrive.', same: 'Everything is up to date.', later: 'Left as it is for now.', skipped: 'You’re offline.' }[r] || 'Done.'); }
-            catch (err) { toast(err.message, 'error'); } finally { b.disabled = false; }
-          } }, icon('swap'), 'Sync now'),
+          syncBtn(),
           h('button', { class: 'btn ghost', onclick: async () => {
             if (!await confirmBox('Sign out of Microsoft on this device? Your work stays on this device and in OneDrive.', 'Sign out')) return;
-            signOut(); draw(); window.dispatchEvent(new Event('klasboek-sync')); toast('Signed out.');
-          } }, 'Sign out')),
-        h('p', { class: 'muted small' }, 'Sign in with the same account on your PC, phone and tablet and they stay the same. Your data is kept in your OneDrive under Apps › Klasboek. Your Claude API key is never synced.'));
-    } else if (clientId()) {
-      kids.push(
-        h('p', {}, 'Sign in with your Microsoft account and use Klasboek on your PC, phone and tablet with the same lessons, calendar and diary.'),
-        h('button', { class: 'btn primary ms-btn', disabled: !navigator.onLine, onclick: () => signIn().catch(e => toast(e.message, 'error')) }, msLogo(), 'Sign in with Microsoft'),
-        h('p', { class: 'muted small' }, 'Works with a personal Microsoft account (Outlook, Hotmail, Live) or a work or school account. Your data goes to your own OneDrive, in a folder only Klasboek uses.'),
-        setupDetails(false));
+            signOut(); resetSyncState(); draw(); window.dispatchEvent(new Event('klasboek-sync')); toast('Signed out.');
+          } }, 'Sign out')));
     } else {
       kids.push(
-        h('p', {}, 'Sign in with your Microsoft account to keep your PC, phone and tablet the same. First, Klasboek needs to be registered with Microsoft once. It takes about 10 minutes on a computer.'),
-        setupDetails(true));
+        h('p', {}, 'Keep your PC, phone and tablet the same: your lessons, calendar, diary and files go into a private GitHub repository that only you can see, and every device you connect stays in step.'),
+        githubSetup(draw),
+        h('details', { class: 'ext-steps' }, h('summary', {}, 'Use a school Microsoft account instead'), msPart()));
     }
     sec.replaceChildren(...kids);
   };
@@ -47,6 +48,63 @@ export function accountSection() {
   draw();
   return sec;
 }
+
+const status = s => h('p', { class: 'small ' + (s.error || s.needsSignIn ? 'warn' : 'muted') },
+  s.needsSignIn ? 'Your sign-in has expired. Sign in again to keep syncing.' : s.error ? 'Last sync didn’t work: ' + s.error
+    : s.syncing ? 'Syncing…' : s.lastSync ? `Last synced ${new Date(s.lastSync).toLocaleString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.${s.dirty ? ' Some changes still to upload.' : ''}` : 'Not synced yet.');
+const autoBox = () => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: autoSync(), onchange: e => { setAutoSync(e.target.checked); if (e.target.checked) syncNow(); } }), 'Sync automatically');
+const syncBtn = () => h('button', { class: 'btn', disabled: !navigator.onLine, onclick: async e => {
+  const b = e.currentTarget; b.disabled = true;
+  try { const r = await syncNow({ quiet: false }); toast({ pushed: 'Uploaded.', pulled: 'Updated from your other device.', same: 'Everything is up to date.', later: 'Left as it is for now.', skipped: 'You’re offline.' }[r] || 'Done.'); }
+  catch (err) { toast(err.message, 'error'); } finally { b.disabled = false; }
+} }, icon('swap'), 'Sync now');
+
+function githubSetup(draw) {
+  const token = h('input', { type: 'password', placeholder: 'github_pat_…', autocomplete: 'off', 'aria-label': 'GitHub access token' });
+  const repo = h('input', { value: 'klasboek-data', 'aria-label': 'Repository name' });
+  const out = h('div', { 'aria-live': 'polite' });
+  const connect = h('button', { class: 'btn primary', onclick: async () => {
+    connect.disabled = true; out.replaceChildren(h('span', { class: 'spinner' }), ' Checking with GitHub…');
+    try {
+      const r = await ghConnect(token.value, repo.value);
+      resetSyncState();
+      out.replaceChildren();
+      toast(`Connected to ${r.owner}/${r.repo}. Syncing…`);
+      window.dispatchEvent(new Event('klasboek-connected'));
+      window.dispatchEvent(new Event('klasboek-sync'));
+      draw();
+    } catch (e) { out.replaceChildren(h('p', { class: 'error small' }, e.message)); }
+    finally { connect.disabled = false; }
+  } }, ghLogo(), 'Connect');
+  return h('div', { class: 'stack' },
+    h('details', { class: 'ext-steps', open: true }, h('summary', {}, 'Set it up (about 3 minutes, once)'),
+      h('ol', {},
+        h('li', {}, h('strong', {}, 'Make a private repository. '), 'Open ', h('a', { href: 'https://github.com/new?name=klasboek-data&visibility=private&description=My+Klasboek+data', target: '_blank', rel: 'noopener' }, 'github.com/new'),
+          ', name it ', h('code', {}, 'klasboek-data'), ', choose ', h('strong', {}, 'Private'), ', then Create repository.'),
+        h('li', {}, h('strong', {}, 'Make an access token. '), 'Open ', h('a', { href: 'https://github.com/settings/personal-access-tokens/new?name=Klasboek&description=Klasboek+sync&expires_in=none&contents=write', target: '_blank', rel: 'noopener' }, 'github.com › Settings › Fine-grained tokens › Generate new token'), '.',
+          h('ul', {},
+            h('li', {}, 'Token name: Klasboek. Expiration: the longest it allows (or No expiration).'),
+            h('li', {}, 'Repository access: ', h('strong', {}, 'Only select repositories'), ' › klasboek-data.'),
+            h('li', {}, 'Permissions › Repository permissions › ', h('strong', {}, 'Contents: Read and write'), '.'),
+            h('li', {}, 'Generate token, then copy it (it starts with github_pat_). Keep a copy somewhere safe, like your password manager: you’ll paste the same token on each device.'))),
+        h('li', {}, h('strong', {}, 'Paste it here and connect.')))),
+    h('div', { class: 'form-grid' },
+      h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Access token'), token),
+      h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Repository'), repo)),
+    h('div', { class: 'row wrap' }, connect),
+    out,
+    h('p', { class: 'muted small' }, 'The token can only open that one repository. Anyone who has it can read your Klasboek data, so don’t share it. It stays on this device and is never synced.'));
+}
+
+function msPart() {
+  if (!clientId()) return h('div', { class: 'stack' }, h('p', { class: 'small' }, 'For a school or work Microsoft 365 account, Klasboek needs to be registered in your school’s Microsoft Entra first (usually by IT).'), setupDetails(false));
+  return h('div', { class: 'stack' },
+    h('button', { class: 'btn ms-btn', disabled: !navigator.onLine, onclick: () => signIn().catch(e => toast(e.message, 'error')) }, msLogo(), 'Sign in with Microsoft'),
+    setupDetails(false));
+}
+
+const ghLogo = () => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('width', '18'); s.setAttribute('height', '18'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('fill', 'currentColor');
+  s.innerHTML = '<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>'; return s; };
 
 function setupDetails(open) {
   const input = h('input', { placeholder: 'e.g. 1a2b3c4d-1234-5678-9abc-def012345678', value: clientId(), 'aria-label': 'Application (client) ID' });
