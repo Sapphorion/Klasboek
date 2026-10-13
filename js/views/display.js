@@ -9,6 +9,55 @@ export function setUiScale(v) {
   document.documentElement.style.setProperty('--ui-scale', v);
 }
 
+// Colours and menu position, also per device.
+export const THEMES = [
+  ['chalk', 'Chalkboard', 'Dark green menu, white pages. The original.'],
+  ['light', 'Light', 'White menu and soft colours. Calm and airy.'],
+  ['night', 'Night', 'Dark everywhere, easy on the eyes in the evening.'],
+];
+export const MENUS = [
+  ['side', 'Side menu', 'Menu down the left with names.'],
+  ['icons', 'Icons only', 'A narrow menu, so pages get more room.'],
+  ['top', 'Across the top', 'Menu along the top. The planner gets the full width.'],
+];
+const get = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+export const currentTheme = () => get('klasboek.theme', 'chalk');
+export const currentMenu = () => get('klasboek.menu', 'side');
+export function setLook(kind, v) {
+  const key = 'klasboek.' + kind, def = kind === 'theme' ? 'chalk' : 'side';
+  try { if (v === def) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch {}
+  const d = document.documentElement;
+  if (v === def) delete d.dataset[kind]; else d.dataset[kind] = v;
+  if (kind === 'theme') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', v === 'light' ? '#FFFFFF' : v === 'night' ? '#0F1413' : '#1E3B33');
+}
+
+// A tiny picture of each choice, so it's clear before you tap it.
+function mini(theme, menu) {
+  const cls = `mini t-${theme} m-${menu}`;
+  return h('span', { class: cls, 'aria-hidden': 'true' },
+    h('span', { class: 'mini-rail' }, h('i'), h('i'), h('i'), h('i')),
+    h('span', { class: 'mini-page' }, h('b'), h('span', { class: 'mini-row' }, h('i', { class: 'c1' }), h('i', { class: 'c2' }), h('i')), h('span', { class: 'mini-row' }, h('i'), h('i', { class: 'c3' }), h('i', { class: 'c1' }))));
+}
+
+export function lookSection() {
+  const sec = h('section', { class: 'card-sec' });
+  const draw = () => {
+    const t = currentTheme(), m = currentMenu();
+    const card = (kind, [id, label, hint], on, pic) => h('button', { class: 'look-card', role: 'radio', 'aria-checked': String(on),
+      onclick: () => { setLook(kind, id); draw(); toast(`${label} on this device.`); } }, pic, h('strong', {}, label), h('span', { class: 'muted small' }, hint));
+    sec.replaceChildren(
+      h('h2', {}, 'Layout and colours on this device'),
+      h('p', { class: 'muted small' }, 'Try them: everything changes straight away and nothing else is affected. Each device keeps its own, so the tablet can use one layout and the PC another.'),
+      h('h3', {}, 'Colours'),
+      h('div', { class: 'look-grid', role: 'radiogroup', 'aria-label': 'Colours' }, THEMES.map(x => card('theme', x, x[0] === t, mini(x[0], m)))),
+      h('h3', {}, 'Menu'),
+      h('div', { class: 'look-grid', role: 'radiogroup', 'aria-label': 'Menu' }, MENUS.map(x => card('menu', x, x[0] === m, mini(t, x[0])))),
+      h('p', { class: 'muted small' }, 'On a phone the menu always sits along the bottom, where your thumb can reach it.'));
+  };
+  draw();
+  return sec;
+}
+
 export function displaySection() {
   const sec = h('section', { class: 'card-sec' });
   const draw = () => {

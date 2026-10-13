@@ -31,11 +31,11 @@ export function toast(msg, kind = 'ok', { action } = {}) {
   const host = [...document.querySelectorAll('dialog[open]')].at(-1) || document.body;
   if (t.parentNode !== host) host.append(t);
   const hide = () => t.classList.remove('show');
-  t.replaceChildren(
+  t.replaceChildren(...[
     h('span', { class: 'toast-ic', 'aria-hidden': 'true' }, icon(TOAST_ICON[kind] || 'check', 16)),
     h('span', { class: 'toast-msg' }, msg),
     action ? h('button', { class: 'toast-act', onclick: () => { hide(); action.run(); } }, action.label) : null,
-    h('button', { class: 'toast-x', 'aria-label': 'Close message', onclick: hide }, icon('x', 14)));
+    h('button', { class: 'toast-x', 'aria-label': 'Close message', onclick: hide }, icon('x', 14))].filter(Boolean));
   t.dataset.kind = kind;
   t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
   const ms = action ? 9000 : kind === 'error' ? 7000 : 3500;

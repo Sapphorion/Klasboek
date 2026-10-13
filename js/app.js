@@ -12,6 +12,7 @@ import { renderTimetable } from './views/timetable.js';
 import { renderModeration } from './views/moderation.js';
 import { renderMaterials } from './views/materials.js';
 import { renderSettings } from './views/settings.js';
+import { currentTheme, setLook } from './views/display.js';
 import { openInstall, isInstalled, onInstallChange } from './views/install.js';
 import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
@@ -45,6 +46,8 @@ function route() {
   cleanup = r.render(main, rest) || null;
   document.title = `${r.label} · Klasboek`;
 }
+
+setLook('theme', currentTheme()); // also sets the browser bar colour
 
 function buildNav() {
   const ul = document.getElementById('nav');

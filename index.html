@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <script>try { var z = localStorage.getItem("klasboek.uiScale"); if (z) document.documentElement.style.setProperty("--ui-scale", z); } catch (e) {}</script>
+  <script>try { var d = document.documentElement, z = localStorage.getItem("klasboek.uiScale"), t = localStorage.getItem("klasboek.theme"), m = localStorage.getItem("klasboek.menu"); if (z) d.style.setProperty("--ui-scale", z); if (t) d.dataset.theme = t; if (m) d.dataset.menu = m; } catch (e) {}</script>
   <title>Klasboek</title>
   <meta name="description" content="Plan lessons from your ATP and timetable, make lesson plans, worksheets and slides, and run moderation. Works offline.">
   <meta name="theme-color" content="#1E3B33">

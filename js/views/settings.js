@@ -2,7 +2,7 @@ import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '.
 import { openInstall } from './install.js';
 import { accountSection } from './account.js';
 import { yearsSection } from './yearui.js';
-import { displaySection } from './display.js';
+import { displaySection, lookSection } from './display.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
 import { exportBackup, importBackup } from '../db.js';
@@ -28,8 +28,9 @@ function view() {
     await saveSettings({ logo: url }); logoImg.src = url; logoImg.hidden = false; toast('Logo saved. It appears on documents and slides.');
   } });
   page.append(h('nav', { class: 'jump', 'aria-label': 'Settings sections' }));
-  page.append(accountSection());
+  page.append(lookSection());
   page.append(displaySection());
+  page.append(accountSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
       field('Your name', h('input', { value: s.teacherName, placeholder: 'e.g. Mr S. Botha', onchange: e => saveSettings({ teacherName: e.target.value.trim() }) })),
