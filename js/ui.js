@@ -21,12 +21,28 @@ export function h(tag, attrs = {}, ...kids) {
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 let toastTimer;
+const TOAST_ICON = { ok: 'check', error: 'x', warn: 'flag' };
+// Small message card in the top corner, away from the work at the bottom of the screen.
+// Hovering or touching it keeps it open; × closes it.
 export function toast(msg, kind = 'ok', { action } = {}) {
   let t = document.getElementById('toast');
-  if (!t) { t = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(t); }
-  t.replaceChildren(...[h('span', {}, msg), action ? h('button', { class: 'toast-act', onclick: () => { t.classList.remove('show'); action.run(); } }, action.label) : null].filter(Boolean));
-  t.dataset.kind = kind; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? 9000 : kind === 'error' ? 6000 : 3000);
+  if (!t) { t = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); }
+  // Above an open pop-up window, the message must sit inside it to be seen.
+  const host = [...document.querySelectorAll('dialog[open]')].at(-1) || document.body;
+  if (t.parentNode !== host) host.append(t);
+  const hide = () => t.classList.remove('show');
+  t.replaceChildren(
+    h('span', { class: 'toast-ic', 'aria-hidden': 'true' }, icon(TOAST_ICON[kind] || 'check', 16)),
+    h('span', { class: 'toast-msg' }, msg),
+    action ? h('button', { class: 'toast-act', onclick: () => { hide(); action.run(); } }, action.label) : null,
+    h('button', { class: 'toast-x', 'aria-label': 'Close message', onclick: hide }, icon('x', 14)));
+  t.dataset.kind = kind;
+  t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+  const ms = action ? 9000 : kind === 'error' ? 7000 : 3500;
+  const arm = () => { clearTimeout(toastTimer); toastTimer = setTimeout(hide, ms); };
+  t.onmouseenter = () => clearTimeout(toastTimer); t.onmouseleave = arm;
+  t.ontouchstart = () => clearTimeout(toastTimer);
+  arm();
 }
 
 // Modal dialog. Returns { close, el }.
