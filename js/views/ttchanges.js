@@ -4,6 +4,8 @@ import { state, saveTimetable, saveLessons } from '../state.js';
 import { h, icon, toast, modal } from '../ui.js';
 import { addDays, fmt, fmtLong, inTerm } from '../dates.js';
 import { ttDayFor, defaultPos, allPositions, posLabel, samePos, swapsOn, isTeachingDay } from '../ttday.js';
+import { periodBlocked } from '../events.js';
+import { afterTeachingChange } from '../adjust.js';
 
 const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const key = p => `${p.week}|${p.day}`;
@@ -89,8 +91,10 @@ function content(weekStart, draw) {
     h('div', { class: 'row between' },
       anyThisWeek ? h('button', { class: 'btn ghost danger sm', onclick: async () => {
         const dayOverrides = { ...(tt.dayOverrides || {}) }; const swapsAll = { ...(tt.swaps || {}) };
-        for (const d of dates) { delete dayOverrides[d]; if (swapsAll[d]) { await swapLessons(d, swapsAll[d]); delete swapsAll[d]; } }
+        const undone = [];
+        for (const d of dates) { delete dayOverrides[d]; if (swapsAll[d]) { await swapLessons(d, swapsAll[d]); undone.push([d, swapsAll[d]]); delete swapsAll[d]; } }
         await saveTimetable({ anchors: (tt.anchors || []).filter(x => !dates.includes(x.date)), dayOverrides, swaps: swapsAll });
+        for (const [d, list] of undone) await settleAfterSwap(d, list);
         toast('This week is back to the normal timetable.'); draw();
       } }, 'Undo all changes this week') : h('span'),
       h('a', { class: 'small', href: '#timetable', onclick: () => document.querySelector('dialog.modal')?.close() }, 'See all timetable changes')),
@@ -108,6 +112,13 @@ async function setSwap(date, removeIndex, pair, draw) {
   await saveTimetable({ swaps });
   toast(pair ? 'Periods swapped. Planned lessons moved with them.' : 'Swap undone.');
   draw();
+  await settleAfterSwap(date, [changed]);
+}
+
+// If a swap moves a lesson into (or out of) a period that's lost to an event, let the planner sort it out.
+async function settleAfterSwap(date, pairs) {
+  if (pairs.some(([a, b]) => periodBlocked(date, a) || periodBlocked(date, b)))
+    await afterTeachingChange({ blocked: [{ from: date, to: date }], freed: [{ from: date, to: date }] }, 'A swapped period is taken by an event that day.');
 }
 
 async function swapLessons(date, pairs) {
@@ -134,7 +145,7 @@ export function changesList() {
   for (const [d, list] of Object.entries(tt.swaps || {})) {
     const lab = id => `P${tt.periods.find(x => x.id === id)?.label ?? '?'}`;
     rows.push({ date: d, text: `${fmtLong(d)}: ${list.map(([a, b]) => `${lab(a)} ⇄ ${lab(b)}`).join(', ')}`,
-      remove: async () => { await swapLessons(d, list); const s = { ...tt.swaps }; delete s[d]; return saveTimetable({ swaps: s }); } });
+      remove: async () => { await swapLessons(d, list); const s = { ...tt.swaps }; delete s[d]; await saveTimetable({ swaps: s }); await settleAfterSwap(d, list); } });
   }
   rows.sort((a, b) => a.date.localeCompare(b.date));
   return h('section', { class: 'card-sec wide tt-changes' },

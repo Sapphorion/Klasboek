@@ -366,6 +366,7 @@ async function placePicked(date, periodId) {
 }
 
 async function dropOnSlot(payload, date, periodId) {
+  if (periodBlocked(date, periodId)) { const ev = blockingEventFor(date, periodId); toast(`No lessons then${ev ? ': ' + ev.title : ''}. Pick another period.`, 'warn'); return; }
   const existing = state.lessons.find(l => l.date === date && l.periodId === periodId);
   const tt = ttCellAt(date, periodId);
   if (payload.atpId) {
@@ -382,12 +383,35 @@ async function dropOnSlot(payload, date, periodId) {
   } else if (payload.lessonId) {
     const l = state.lessons.find(x => x.id === payload.lessonId);
     if (!l || (l.date === date && l.periodId === periodId)) return;
-    if (existing) { existing.date = l.date; existing.periodId = l.periodId; await saveLessons([existing]); }
+    const from = { date: l.date, pid: l.periodId };
+    const ttFrom = from.date ? ttCellAt(from.date, from.pid) : null;
+    const fits = (x, cell) => !!cell && cell.subjectId === x.subjectId && (!cell.cls || !x.cls || cell.cls === x.cls);
+    const before = [l, existing].filter(Boolean).map(x => ({ x, date: x.date, pid: x.periodId, cls: x.cls }));
+    if (existing) { existing.date = from.date; existing.periodId = from.pid; }
     l.date = date; l.periodId = periodId;
-    if (tt && tt.subjectId === l.subjectId && tt.cls) l.cls = tt.cls;
-    await saveLesson(l);
-    if (tt?.subjectId && tt.subjectId !== l.subjectId) toast(`Moved, but your timetable has ${classLabel(subjectById(tt.subjectId), tt.cls)} in that period.`, 'warn');
-    if (existing) toast('Swapped the two lessons.');
+    if (tt && tt.subjectId === l.subjectId && tt.cls && !l.cls) l.cls = tt.cls; // only fill in a missing class, never relabel one
+    await saveLessons(existing ? [existing, l] : [l]);
+    const undoMoves = async () => { for (const b of before) { b.x.date = b.date; b.x.periodId = b.pid; b.x.cls = b.cls; } await saveLessons(before.map(b => b.x)); };
+    if (!existing) {
+      if (tt?.subjectId && !fits(l, tt)) toast(`Moved, but your timetable has ${classLabel(subjectById(tt.subjectId), tt.cls)} in that period.`, 'warn', { action: { label: 'Undo', run: undoMoves } });
+      return;
+    }
+    // Two classes swapped on the same day: swap those periods on that day's timetable too, so everything matches.
+    const busy = new Set(swapsOn(date).flat());
+    if (from.date === date && !fits(l, tt) && !fits(existing, ttFrom) && fits(l, ttFrom) && fits(existing, tt) && !busy.has(from.pid) && !busy.has(periodId)) {
+      const swaps = { ...(state.timetable.swaps || {}) };
+      swaps[date] = [...(swaps[date] || []), [from.pid, periodId]];
+      await saveTimetable({ swaps });
+      const lab = id => 'P' + (state.timetable.periods.find(x => x.id === id)?.label ?? '?');
+      toast(`Swapped. ${fmt(date, { weekday: 'long' })}’s timetable now has ${lab(from.pid)} ⇄ ${lab(periodId)}.`, 'ok', { action: { label: 'Undo', run: async () => {
+        const sw = { ...(state.timetable.swaps || {}) };
+        sw[date] = (sw[date] || []).filter(([x, y]) => !(x === from.pid && y === periodId)); if (!sw[date].length) delete sw[date];
+        await undoMoves(); await saveTimetable({ swaps: sw }); toast('Undone.');
+      } } });
+      return;
+    }
+    const mismatch = !fits(l, tt) || (ttFrom && !fits(existing, ttFrom));
+    toast(mismatch ? 'Swapped, but each lesson is now in a period your timetable gives to the other class.' : 'Swapped the two lessons.', mismatch ? 'warn' : 'ok', { action: { label: 'Undo', run: undoMoves } });
   }
 }
 
