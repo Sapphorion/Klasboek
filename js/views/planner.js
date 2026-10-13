@@ -58,7 +58,7 @@ function moreMenu(tw, days) {
 function view() {
   const tw = termWeekOf(weekStart) || termWeekOf(addDays(weekStart, 4));
   const days = weekDays();
-  const wrap = h('div', { class: 'planner' });
+  const wrap = h('div', { class: 'planner' + (state.settings.plannerLook === 'colour' ? '' : ' calm') });
   if (!state.settings.onboarded) wrap.append(onboarding());
 
   // ---------- Toolbar ----------

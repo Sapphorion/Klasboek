@@ -878,3 +878,25 @@ dialog.modal .modal-body > * { min-width: 0; }
 .cover-thumb img { width: 100%; display: block; }
 .badge { font-size: .72rem; font-weight: 700; background: #E6F2EA; color: var(--ok); padding: .1rem .45rem; border-radius: 999px; }
 .cover-chip select { border: 0; background: transparent; padding: 0 0 0 .3rem; font: inherit; }
+
+/* ---------- Calm planner (default): a plain page, colour only where it carries meaning ---------- */
+.planner.calm .week-grid { background-image: none; border-color: var(--line); }
+.planner.calm .week-grid.rows .day-head, .planner.calm .week-grid .day-head { border-right: 1px solid var(--line); }
+.planner.calm .week-grid .period-head, .planner.calm .week-grid.rows .period-head { border-bottom: 1px solid var(--line); }
+.planner.calm .corner { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.planner.calm .slot { border-left-color: #F1F3F1; }
+.planner.calm .slot.expected { background: none; }
+.planner.calm .slot .expect { border-left: 0; padding-left: .1rem; color: #8A938F; font-size: .75rem; }
+.planner.calm .slot.holiday, .planner.calm .slot.no-teach { background: #F6F7F5; }
+.planner.calm .slot.no-teach .expect.lost { color: #7A8380; }
+.planner.calm .week-grid.rows .day-head.today, .planner.calm .day-head.today { background: #FBFAF2; }
+.planner.calm .day-head.today strong { background: none; text-decoration: underline; text-decoration-color: var(--marker); text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.planner.calm .lesson { border-left-width: 3px; box-shadow: none; }
+.planner.calm .lesson .l-subj { color: var(--ink-2); }
+.planner.calm .card { border-top-width: 2px; }
+.planner.calm .pill { background: #F3F5F3; }
+.planner.calm .week-strip .ev-chip { border-left-width: 3px; }
+.planner.calm .tt-day-label.changed { background: #F2F0E1; }
+.planner.calm .onboard { border-left-width: 3px; }
+.planner.calm .lesson .l-subj { filter: none; }
+.planner.calm .lesson .tick { border-color: #E3E7E4; }

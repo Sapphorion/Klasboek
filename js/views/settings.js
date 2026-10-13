@@ -57,6 +57,9 @@ function view() {
     field('Layout', h('select', { onchange: e => saveSettings({ plannerLayout: e.target.value }) },
       h('option', { value: 'days-rows', selected: (s.plannerLayout || 'days-rows') === 'days-rows' }, 'Days down the side, periods across the top'),
       h('option', { value: 'days-cols', selected: s.plannerLayout === 'days-cols' }, 'Days across the top, periods down the side'))),
+    field('Look', h('select', { onchange: e => saveSettings({ plannerLook: e.target.value }) },
+      h('option', { value: 'calm', selected: s.plannerLook !== 'colour' }, 'Calm: plain background, colour only on lessons'),
+      h('option', { value: 'colour', selected: s.plannerLook === 'colour' }, 'Colourful: tinted periods, stripes and margin line'))),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.autoAdjust !== false, onchange: e => saveSettings({ autoAdjust: e.target.checked }) }),
       'When teaching time is lost or comes back, move lessons without asking first (you can still undo)')));
 
