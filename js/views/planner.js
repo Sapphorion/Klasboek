@@ -89,7 +89,9 @@ function view() {
   const periods = state.timetable.periods;
   const grid = h('div', {
     class: 'week-grid ' + (rows ? 'rows' : 'cols'), role: 'grid', 'aria-label': 'Week timetable',
-    style: { gridTemplateColumns: rows ? `11rem repeat(${periods.length}, minmax(8rem, 1fr))` : `4.5rem repeat(${days.length}, minmax(9rem, 1fr))` },
+    style: { gridTemplateColumns: rows ? `11rem repeat(${periods.length}, minmax(8rem, 1fr))` : `4.5rem repeat(${days.length}, minmax(9rem, 1fr))`,
+      // As wide as all its columns, so the white page carries on when you scroll sideways.
+      minWidth: rows ? `calc(11rem + ${periods.length} * 8rem + 2px)` : `calc(4.5rem + ${days.length} * 9rem + 2px)` },
   });
   const dayHead = d => {
     const isToday = d.date === today();
