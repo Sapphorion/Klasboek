@@ -15,6 +15,8 @@ import { openDayMenu } from './daymenu.js';
 import { openTidy, findProblems } from './tidy.js';
 import { partsOf } from './lesson.js';
 import { markDone } from '../adjust.js';
+import { yearSwitch } from './yearui.js';
+import { knownYears } from '../years.js';
 
 let weekStart = mondayOf(today());
 let trayScope = 'week';      // 'week' | 'term'
@@ -29,6 +31,11 @@ export function renderPlanner(root, [mode, date] = []) {
   if (mode === 'month') { location.replace('#calendar' + (date ? '/' + date : '')); return null; }
   rootEl = root;
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) weekStart = mondayOf(date);
+  else if (weekStart.slice(0, 4) !== String(state.settings.year)) {
+    // A different school year is open: start at today if it's in that year, otherwise at its first week.
+    const t = state.settings.terms || [];
+    weekStart = today().slice(0, 4) === String(state.settings.year) ? mondayOf(today()) : mondayOf(t[0]?.start || `${state.settings.year}-01-15`);
+  }
   const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings', 'materials', 'events', 'notices', 'diary'].includes(w)) rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
@@ -46,12 +53,16 @@ function moreMenu(tw, days) {
   return h('details', { class: 'more-menu' },
     h('summary', { class: 'btn ghost', 'aria-label': 'More planner options' }, icon('grid'), 'More'),
     h('div', { class: 'more-list', role: 'menu' },
+      h('span', { class: 'menu-head' }, 'This week'),
       item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
+      item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
+      h('span', { class: 'menu-head' }, 'This term'),
+      item('chart', 'Term progress (ATP coverage)', () => { location.hash = 'progress/' + (tw?.term || ''); }),
       item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),
+      h('span', { class: 'menu-head' }, 'Calendar and setup'),
       item('month', 'Upload year planner or test timetable', () => { location.hash = 'calendar/' + weekStart; }),
       item('swap', 'Google or Outlook calendar', () => import('./extcal.js').then(x => x.openExternalCalendars())),
       item('check', 'Check grades and colours', openTidy),
-      item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
     ));
 }
 
@@ -69,6 +80,7 @@ function view() {
       h('div', { class: 'week-title' }, h('h1', {}, termLabel), h('span', { class: 'muted' }, `${fmt(days[0].date)} – ${fmt(days.at(-1).date, { day: 'numeric', month: 'short', year: 'numeric' })}`)),
       h('button', { class: 'icon-btn', 'aria-label': 'Next week', onclick: () => { weekStart = addDays(weekStart, 7); rerender(); } }, icon('right')),
       cycleBadge(tw),
+      knownYears().length > 1 || (today() >= `${state.settings.year}-09-01`) ? yearSwitch({ compact: true }) : null,
       weekStart !== mondayOf(today()) ? h('button', { class: 'btn ghost sm', onclick: () => { weekStart = mondayOf(today()); rerender(); } }, 'This week') : null,
       termJump(tw),
     ),

@@ -61,11 +61,14 @@ function askCard() {
     if (!text) { ta.focus(); return; }
     const r = parseRequest(text);
     if (adjust || !aiReady()) { newDialog(r.type, { ...r, extra: text }); return; }
-    status.replaceChildren(h('p', { class: 'small' }, h('span', { class: 'spinner' }), ` Making a ${typeInfo(r.type).label.toLowerCase()}${r.subjectId ? ' · ' + subjectLabel(subjectById(r.subjectId)) : r.grade ? ' · Grade ' + r.grade : ''}${r.marks ? ' · ' + r.marks + ' marks' : ''}${r.time ? ' · ' + r.time + ' min' : ''}… about a minute.`));
+    const live = h('span', { class: 'muted' });
+    const onProg = e => { live.textContent = ' · ' + e.detail; };
+    window.addEventListener('ai-progress', onProg);
+    status.replaceChildren(h('p', { class: 'small' }, h('span', { class: 'spinner' }), ` Making a ${typeInfo(r.type).label.toLowerCase()}${r.subjectId ? ' · ' + subjectLabel(subjectById(r.subjectId)) : r.grade ? ' · Grade ' + r.grade : ''}${r.marks ? ' · ' + r.marks + ' marks' : ''}${r.time ? ' · ' + r.time + ' min' : ''}… about a minute.`, live));
     const done = busy(go, 'Making…');
     try { await buildWithAi(r.type, { ...r, extra: text }); }
     catch (e) { status.replaceChildren(h('p', { class: 'error small' }, e.message)); }
-    finally { done(); }
+    finally { done(); window.removeEventListener('ai-progress', onProg); }
   };
   go.onclick = () => run(false);
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(false); });
@@ -172,6 +175,8 @@ async function buildWithAi(type, o) {
   const r = await aiCreate(type, { subject: subj?.name, grade: c.grade, language: c.language, topic: o.title || o.topic || atp?.topic || '', details: atp?.details || '', sourceText: o.sourceText || '', extra: o.extra || '',
     marks, time: type === 'test' ? (o.time || 60) : 0, count: o.count || { worksheet: 8, slides: 10, rubric: 5, cards: 16 }[type] || 0, length: o.length || 'medium', levelsCount: o.levelsCount || 4, levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets });
   applyAi(c, r);
+  const empty = isBlockDoc(c) ? !c.blocks.length : c.type === 'slides' ? !c.slides.length : c.type === 'cards' ? !c.cards.length : c.type === 'rubric' ? !c.rubric.criteria.length : false;
+  if (empty) throw new Error('The AI sent back an empty page. Please try again; if it keeps happening, try Claude Opus in Settings.');
   if (marks) c.meta.targetMarks = marks;
   if (!c.title) c.title = o.title || atp?.topic || typeInfo(type).label;
   await saveCreation(c);

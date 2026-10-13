@@ -1,6 +1,9 @@
 import { loadState, onChange, state } from './state.js';
 import { h, icon, toast } from './ui.js';
 import { renderPlanner } from './views/planner.js';
+import { renderToday } from './views/today.js';
+import { renderProgress } from './views/progress.js';
+import { renderStock } from './views/stock.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderDiary } from './views/diary.js';
 import { renderCreate } from './views/create.js';
@@ -14,6 +17,7 @@ import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
 
 const ROUTES = [
+  { id: 'today', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
   { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
   { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar },
   { id: 'diary', label: 'Diary', short: 'Diary', icon: 'diary', render: renderDiary },
@@ -21,6 +25,8 @@ const ROUTES = [
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
   { id: 'moderation', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
+  { id: 'stock', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock },
+  { id: 'progress', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
   { id: 'materials', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
   { id: 'settings', label: 'Settings', short: 'Settings', icon: 'gear', render: renderSettings },
 ];
@@ -29,8 +35,8 @@ const main = document.getElementById('main');
 let current = null, cleanup = null;
 
 function route() {
-  const [id, ...rest] = (location.hash.slice(1) || 'planner').split('/');
-  const r = ROUTES.find(r => r.id === id) || ROUTES[0];
+  const [id, ...rest] = (location.hash.slice(1) || state.settings.home || 'today').split('/');
+  const r = ROUTES.find(r => r.id === id) || ROUTES.find(r => r.id === 'planner');
   document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.id === r.id ? 'page' : 'false'));
   document.querySelectorAll('dialog.modal[open] > header .icon-btn').forEach(b => b.click()); // leaving the page closes pop-ups
   if (cleanup) { cleanup(); cleanup = null; }

@@ -1,6 +1,7 @@
 import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '../state.js';
 import { openInstall } from './install.js';
 import { accountSection } from './account.js';
+import { yearsSection } from './yearui.js';
 import { displaySection } from './display.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
@@ -26,6 +27,7 @@ function view() {
     const url = await shrink(f, 300);
     await saveSettings({ logo: url }); logoImg.src = url; logoImg.hidden = false; toast('Logo saved. It appears on documents and slides.');
   } });
+  page.append(h('nav', { class: 'jump', 'aria-label': 'Settings sections' }));
   page.append(accountSection());
   page.append(displaySection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
@@ -48,12 +50,15 @@ function view() {
   drawTerms();
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'School calendar'),
     h('p', { class: 'muted small' }, 'Term dates decide which ATP week each calendar week is. Defaults are the public school calendar; change them if your school differs.'),
-    h('div', { class: 'row wrap' }, field('Year', h('select', { onchange: e => { const y = +e.target.value; const t = DEFAULT_TERMS[y]; saveSettings({ year: y, terms: t ? t.map(([start, end]) => ({ start, end })) : s.terms }); s.terms = state.settings.terms; drawTerms(); } },
-      Object.keys(DEFAULT_TERMS).map(y => h('option', { value: y, selected: +y === s.year }, y))), 'Picking a year loads its public school dates.')),
+    h('p', { class: 'small' }, h('strong', {}, `${s.year} term dates`), DEFAULT_TERMS[s.year] ? h('button', { class: 'link small', style: { marginLeft: '.6rem' }, onclick: () => { saveSettings({ terms: DEFAULT_TERMS[s.year].map(([start, end]) => ({ start, end })) }); s.terms = state.settings.terms; drawTerms(); } }, 'Reset to the public calendar') : null),
     termsBox));
+  page.append(yearsSection());
 
   // ---------- Planner ----------
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Planner'),
+    field('Open Klasboek on', h('select', { onchange: e => saveSettings({ home: e.target.value }) },
+      h('option', { value: 'today', selected: (s.home || 'today') === 'today' }, 'Today: lessons, to-dos and warnings'),
+      h('option', { value: 'planner', selected: s.home === 'planner' }, 'The planner'))),
     field('Layout', h('select', { onchange: e => saveSettings({ plannerLayout: e.target.value }) },
       h('option', { value: 'days-rows', selected: (s.plannerLayout || 'days-rows') === 'days-rows' }, 'Days down the side, periods across the top'),
       h('option', { value: 'days-cols', selected: s.plannerLayout === 'days-cols' }, 'Days across the top, periods down the side'))),
@@ -84,7 +89,7 @@ function view() {
   const restoreIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: async () => {
     const f = restoreIn.files[0]; if (!f) return;
     if (!await confirmBox('Restoring replaces everything in Klasboek on this device with the backup.', 'Restore backup')) return;
-    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
+    try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary', 'stock'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
     catch (e) { toast(e.message, 'error'); }
   } });
   const backupBtn = h('button', { class: 'btn' }, icon('download'), 'Download backup');
@@ -107,6 +112,13 @@ function view() {
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Backup'),
     h('p', { class: 'muted small' }, 'Everything is saved in this browser on this device. Download a backup regularly (and before clearing your browser), and restore it to move to another device.'),
     h('div', { class: 'row wrap' }, backupBtn, h('button', { class: 'btn ghost', onclick: () => restoreIn.click() }, icon('upload'), 'Restore from backup'), restoreIn)));
+  // Jump list: one chip per section so nothing is hidden at the bottom of a long page.
+  const jump = page.querySelector('.jump');
+  page.querySelectorAll(':scope > section').forEach((sec, i) => {
+    const t = sec.querySelector('h2')?.textContent; if (!t) return;
+    sec.id = sec.id || 'set-' + i;
+    jump.append(h('a', { href: '#settings', onclick: e => { e.preventDefault(); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, t));
+  });
   return page;
 }
 

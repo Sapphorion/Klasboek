@@ -53,6 +53,7 @@ export const state = {
   diary: [],       // teacher diary: { id, date, time, kind, text, done, cls, eventId, created, updated }
   creations: [],   // materials made in Create: { id, type, title, subjectId, grade, language, design, blocks|slides|rubric|cards, meta, created, updated }
   moderations: [], // { id, title, subjectId, cls, task, total, learners:[{name, mark, modMark, sampled, reason}], checks:{}, fileChecks:{}, ... }
+  stock: [],       // lab stock: { id, name, category, qty, unit, min, location, purchased, expiry, opened, supplier, cost, hazard, notes, lessonIds }
 };
 
 const listeners = new Set();
@@ -71,6 +72,8 @@ export async function loadState() {
   state.notices = await db.all('notices');
   state.creations = await db.all('creations');
   state.diary = await db.all('diary');
+  state.stock = await db.all('stock');
+  state.otherYears = (await db.all('years')).filter(y => +y.year !== +state.settings.year);
 }
 
 export const atpSort = (a, b) => a.subjectId.localeCompare(b.subjectId) || a.term - b.term || a.week - b.week || (a.order || 0) - (b.order || 0);
@@ -87,7 +90,8 @@ export async function saveTimetable(patch) {
 }
 
 // ---------- Subjects ----------
-export const subjectById = id => state.subjects.find(s => s.id === id);
+// Subjects of other school years still resolve, so old lessons and materials keep their names.
+export const subjectById = id => state.subjects.find(s => s.id === id) || (state.otherYears || []).flatMap(y => y.subjects || []).find(s => s.id === id);
 export const subjectLabel = s => s ? `${s.name}${s.grade ? ' · Gr ' + s.grade : ''}` : 'No subject';
 // The grade a class name points to: "11A", "Gr 11 A", "10.3" → "11", "11", "10".
 export const classGrade = cls => (String(cls || '').match(/^\s*(?:gr(?:ade|aad)?\.?\s*)?(\d{1,2})(?!\d)/i) || [])[1] || '';
@@ -155,7 +159,7 @@ export async function deleteAtpItem(id) {
   state.atp = state.atp.filter(a => a.id !== id);
   await db.del('atp', id); emit('atp');
 }
-export const atpById = id => state.atp.find(a => a.id === id);
+export const atpById = id => state.atp.find(a => a.id === id) || (state.otherYears || []).flatMap(y => y.atp || []).find(a => a.id === id);
 
 // ---------- Lessons ----------
 export const lessonById = id => state.lessons.find(l => l.id === id);
@@ -275,4 +279,19 @@ export async function saveCreation(c, { silent = true } = {}) {
 export async function deleteCreation(id) {
   state.creations = state.creations.filter(c => c.id !== id);
   await db.del('creations', id); emit('creations');
+}
+
+// ---------- Lab stock ----------
+export const stockById = id => state.stock.find(s => s.id === id);
+export async function saveStock(item, { silent = false } = {}) {
+  if (!item.id) { item.id = uid('k_'); item.created = new Date().toISOString(); }
+  item.updated = new Date().toISOString();
+  const i = state.stock.findIndex(x => x.id === item.id);
+  if (i < 0) state.stock.push(item); else state.stock[i] = item;
+  await db.put('stock', item); if (!silent) emit('stock');
+  return item;
+}
+export async function deleteStock(id) {
+  state.stock = state.stock.filter(s => s.id !== id);
+  await db.del('stock', id); emit('stock');
 }

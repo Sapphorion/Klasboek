@@ -42,6 +42,11 @@ export function repair(x, key = '') {
   return x;
 }
 
+// The AI answers as a stream, so long pieces (a 50-mark test with a memo and diagrams) don't time out,
+// and the teacher sees progress instead of a frozen button.
+let progressFn = null;
+export function onAiProgress(fn) { progressFn = fn; return () => { if (progressFn === fn) progressFn = null; }; }
+
 async function call({ system, content, tool, maxTokens = 8000 }) {
   const reason = aiUnavailableReason();
   if (reason) throw new Error(reason);
@@ -52,15 +57,27 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const j = await post({ system: sys, messages, tool, maxTokens });
     const block = j.content?.find(b => b.type === 'tool_use' && b.name === tool.name);
-    if (j.stop_reason === 'max_tokens') throw new Error('The response was too long and got cut off. Try again, or pick a bigger model in Settings.');
-    if (block) return repair(block.input);
+    if (j.stop_reason === 'max_tokens') throw new Error('The answer was too long and got cut off. Try a shorter piece or fewer marks, or pick Claude Opus in Settings.');
+    if (block && block.input && Object.keys(block.input).length) return repair(unwrap(block.input, tool));
     const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const parsed = jsonFrom(text);
-    if (parsed) return repair(parsed);
+    if (parsed) return repair(unwrap(parsed, tool));
     messages.push({ role: 'assistant', content: j.content?.length ? j.content : [{ type: 'text', text: '…' }] },
-      { role: 'user', content: `Please give the result by calling the ${tool.name} tool now.` });
+      { role: 'user', content: `Please give the complete result by calling the ${tool.name} tool now.` });
   }
-  throw new Error('Claude did not return structured content. Try again.');
+  throw new Error('Claude didn’t send anything back that Klasboek could use. Please try again.');
+}
+
+// Sometimes the result arrives wrapped, e.g. {"save_material": {...}} or {"input": {...}}.
+function unwrap(x, tool) {
+  const want = Object.keys(tool.schema?.properties || {});
+  const has = o => o && typeof o === 'object' && want.some(k => k in o);
+  if (has(x)) return x;
+  for (const v of Object.values(x || {})) {
+    if (has(v)) return v;
+    if (typeof v === 'string' && /^\s*\{/.test(v)) { try { const o = JSON.parse(v); if (has(o)) return o; } catch {} }
+  }
+  return x;
 }
 
 async function post({ system, messages, tool, maxTokens }) {
@@ -81,6 +98,7 @@ async function post({ system, messages, tool, maxTokens }) {
         messages,
         tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }],
         tool_choice: { type: 'auto' },
+        stream: true,
       }),
     });
   } catch {
@@ -93,9 +111,58 @@ async function post({ system, messages, tool, maxTokens }) {
     if (res.status === 402 || /credit balance/i.test(msg)) msg = 'Your Claude account has no credit left. Top up under Billing at platform.claude.com.';
     if (res.status === 429) msg = 'Rate limit reached. Wait a minute and try again.';
     if (res.status === 529 || res.status === 503) msg = 'Claude is busy right now. Try again in a minute.';
+    if (res.status === 404 && /model/i.test(msg)) msg = 'That AI model isn’t available on your account. Pick another model in Settings.';
     throw new Error(msg);
   }
-  return res.json();
+  const type = res.headers.get('content-type') || '';
+  if (!type.includes('event-stream') || !res.body) return res.json(); // (proxies or tests that answer in one go)
+  return readStream(res.body);
+}
+
+// Server-sent events → the same shape as a normal (non-streamed) reply.
+async function readStream(body) {
+  const reader = body.getReader();
+  const dec = new TextDecoder();
+  const out = { content: [], stop_reason: null };
+  const json = [];
+  let buf = '', chars = 0, lastTick = 0;
+  const tick = () => {
+    if (Date.now() - lastTick < 250) return;
+    lastTick = Date.now();
+    const all = json.join('');
+    const q = (all.match(/"type"\s*:\s*"question"/g) || []).length;
+    const sl = (all.match(/"bullets"\s*:/g) || []).length;
+    const msg = (q ? `${q} question${q > 1 ? 's' : ''} written…` : sl ? `${sl} slide${sl > 1 ? 's' : ''} written…` : `Writing… ${Math.round(chars / 100) / 10}k characters`);
+    progressFn?.(msg); window.dispatchEvent(new CustomEvent('ai-progress', { detail: msg }));
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+      const data = chunk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('');
+      if (!data) continue;
+      let ev; try { ev = JSON.parse(data); } catch { continue; }
+      if (ev.type === 'content_block_start') { out.content[ev.index] = { ...ev.content_block }; if (ev.content_block.type === 'tool_use') json[ev.index] = ''; }
+      else if (ev.type === 'content_block_delta') {
+        const b = out.content[ev.index];
+        if (ev.delta.type === 'input_json_delta') { json[ev.index] = (json[ev.index] || '') + ev.delta.partial_json; chars += ev.delta.partial_json.length; tick(); }
+        else if (ev.delta.type === 'text_delta' && b) { b.text = (b.text || '') + ev.delta.text; chars += ev.delta.text.length; tick(); }
+      } else if (ev.type === 'message_delta') { if (ev.delta?.stop_reason) out.stop_reason = ev.delta.stop_reason; }
+      else if (ev.type === 'error') throw new Error(ev.error?.type === 'overloaded_error' ? 'Claude is busy right now. Try again in a minute.' : (ev.error?.message || 'Claude stopped with an error. Try again.'));
+    }
+  }
+  out.content = out.content.filter(Boolean);
+  out.content.forEach((b, k) => {
+    if (b.type !== 'tool_use') return;
+    const raw = json[k] || '';
+    if (!raw.trim()) { b.input = b.input || {}; return; }
+    try { b.input = JSON.parse(raw); }
+    catch { b.input = {}; if (!out.stop_reason || out.stop_reason === 'end_turn') out.stop_reason = 'max_tokens'; }
+  });
+  return out;
 }
 
 function jsonFrom(text) {
@@ -339,7 +406,7 @@ const RUBRIC_SCHEMA = { type: 'object', properties: { title: { type: 'string' },
 const CARDS_SCHEMA = { type: 'object', properties: { title: { type: 'string' }, cards: { type: 'array', items: { type: 'object', properties: { term: { type: 'string', description: 'One word or a short phrase' }, meaning: { type: 'string', description: 'Clear, short definition for the grade' } }, required: ['term', 'meaning'] } } }, required: ['title', 'cards'] };
 const schemaFor = type => ({ test: DOC_SCHEMA, worksheet: DOC_SCHEMA, notes: DOC_SCHEMA, slides: SLIDES_SCHEMA, rubric: RUBRIC_SCHEMA, cards: CARDS_SCHEMA }[type]);
 
-const CREATE_SYSTEM = lang => `You are an experienced South African teacher creating CAPS-aligned classroom materials. Use South African contexts, names, places and Rand amounts where examples need them. Be accurate: every memo answer must be correct. Memo answers show the mark split with ticks, e.g. "x = 3 ✓ (1)" or "photosynthesis ✓ uses light energy ✓ (2)", and the ticks add up to the question's marks. When a question needs a graph, add a "graph" block right before it (functions and axis ranges). When it needs a labelled diagram (cell, circuit, apparatus, triangle, food web), add a "diagram" block with a clean SVG line drawing. Use them where a real paper would, not on every question. Pitch language and difficulty at the grade given. ${lang && lang !== 'English' ? `Write everything in ${lang}.` : 'Write in South African English.'}`;
+const CREATE_SYSTEM = lang => `You are an experienced South African teacher creating CAPS-aligned classroom materials. Use South African contexts, names, places and Rand amounts where examples need them. Be accurate: every memo answer must be correct. Memo answers show the mark split with ticks, e.g. "x = 3 ✓ (1)" or "photosynthesis ✓ uses light energy ✓ (2)", and the ticks add up to the question's marks. When a question needs a graph, add a "graph" block right before it (functions and axis ranges). When it needs a labelled diagram (cell, circuit, apparatus, triangle, food web), add a "diagram" block with a clean, compact SVG line drawing (simple shapes, no more than about 60 elements). Use them where a real paper would, not on every question, and at most three diagrams per piece. Pitch language and difficulty at the grade given. ${lang && lang !== 'English' ? `Write everything in ${lang}.` : 'Write in South African English.'}`;
 
 function brief(type, o) {
   const lv = (o.levelNames || []).map((n, i) => `${i + 1} = ${n} (target ${o.levelTargets?.[i] ?? '?'}% of marks)`).join('; ');
@@ -365,7 +432,7 @@ export async function aiCreate(type, o) {
     system: CREATE_SYSTEM(o.language),
     content: brief(type, o),
     tool: { name: 'save_material', description: 'Save the material', schema: schemaFor(type) },
-    maxTokens: 16000,
+    maxTokens: 32000,
   });
 }
 
@@ -379,7 +446,7 @@ Teacher’s request: ${instruction}
 Current material (JSON):
 ${JSON.stringify(current).slice(0, 60000)}`,
     tool: { name: 'save_material', description: 'Save the revised material', schema: schemaFor(type) },
-    maxTokens: 16000,
+    maxTokens: 32000,
   });
 }
 

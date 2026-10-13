@@ -72,11 +72,20 @@ export function loadScript(src) {
 
 export function busy(btn, label) {
   const old = btn.innerHTML; btn.disabled = true; btn.classList.add('busy');
-  btn.innerHTML = ''; btn.append(h('span', { class: 'spinner' }), label || 'Working…');
-  return () => { btn.disabled = false; btn.classList.remove('busy'); btn.innerHTML = old; };
+  const text = h('span', {}, label || 'Working…');
+  btn.innerHTML = ''; btn.append(h('span', { class: 'spinner' }), text);
+  // While busy, show the AI's progress (e.g. "7 questions written…") so it never looks frozen.
+  const onProg = e => { text.textContent = e.detail; };
+  window.addEventListener('ai-progress', onProg);
+  const done = () => { window.removeEventListener('ai-progress', onProg); btn.disabled = false; btn.classList.remove('busy'); btn.innerHTML = old; };
+  done.set = t => { text.textContent = t; };
+  return done;
 }
 
 const ICONS = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/>',
+  chart: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
   diary: '<path d="M6 3h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6z"/><path d="M6 3v18M4 7h4M4 12h4M4 17h4M11 8h5M11 12h5"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   month: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="8" cy="14" r="1"/><circle cx="12" cy="14" r="1"/><circle cx="16" cy="14" r="1"/><circle cx="8" cy="17.5" r="1"/><circle cx="12" cy="17.5" r="1"/>',

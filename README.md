@@ -4,6 +4,10 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 
 ## What it does
 
+- **Today** (opens first; change it in Settings → Planner): today's lessons with a tick to mark them taught and which still need preparing, this week's tests and events, your diary to-dos, moderation deadlines, lab stock warnings, and a bar per class showing how far it is through this term's ATP.
+- **Term progress** (Today, or Planner → More): for each class, every ATP topic of the term marked taught, busy, planned, not planned, done already or **behind** (its ATP week has passed and it isn't taught). Print the report, or **print a whole term's lessons** for one class or all of them (lesson plans, worksheets with memos and/or notes, with a contents page) or save them as one PDF.
+- **Lab stock**: chemicals, glassware, equipment and consumables with quantity on hand and unit, where it's kept, date bought, expiry, opened date, supplier, cost, hazard, formula and a reorder level. − and + buttons record use and new stock (with a history), *New batch* copies an item with a new expiry. Filters for expired or expiring within 60 days, low or out, and hazardous; warnings also show on Today. Import an Excel/CSV list (columns are recognised by name), download to Excel (with a *Needs attention* sheet) or print a stock-take sheet with a blank *Counted* column. A starter list of common Science items is offered on an empty list.
+- **Next school year** (Settings → School years, or the year picker on the planner): start the new year with its term dates, choose which subjects carry on (and their new grade), bring their ATPs and keep the timetable. Past years stay intact and can be opened again from the picker; lessons, diary and calendar keep their dates.
 - **Subjects & ATPs**: upload a DBE ATP (PDF, Word or Excel). It is read on the device and shown for checking before saving. Complicated tables can be re-read with AI.
 - **Timetable**: import from Excel/Word, read a photo with AI, or fill the grid by hand. Supports one-week timetables and two-week cycles (Week A / Week B), including Day 1–10 layouts. The cycle can restart every term or carry on across terms, and a tap on the planner's Week badge swaps A and B if the school is out of step.
 - **School calendar** (its own page): the school year by month or as a list, with tests, holidays, events and how many lessons each day. Upload the year planner and test or exam timetables there (PDF, Word, Excel, or a photo read by AI); dates are shown for checking first. *Change this day* (half day, lost periods, no school, a different timetable day) moves lessons on the planner automatically. Old `#planner/month` links open the calendar.
@@ -79,7 +83,8 @@ js/ai.js               all Claude API calls
 js/create/             Create: model.js (materials, numbering, templates), render.js (themes, preview, print), export.js (Word, PowerPoint)
 js/exporters.js        Word, PowerPoint, print
 js/moderation-*.js     sampling, stats, report
-js/views/              one file per screen
+js/years.js            school years: start a new year, switch between years
+js/views/              one file per screen (today, planner, calendar, diary, create, progress, stock, …)
 vendor/                pdf.js, mammoth, SheetJS, docx, PptxGenJS (open-source, bundled for offline use)
 fonts/                 Atkinson Hyperlegible, Bricolage Grotesque (SIL Open Font License)
 ```
