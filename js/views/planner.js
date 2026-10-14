@@ -56,6 +56,7 @@ function moreMenu(tw, days) {
       h('span', { class: 'menu-head' }, 'This week'),
       item('swap', 'Timetable changes and period swaps', () => openTtChanges(weekStart)),
       item('download', 'Download week plan (.docx)', () => exportWeekPlanDocx(weekStart, days).catch(e => toast(e.message, 'error'))),
+      item('doc', 'Download in the school format', () => import('./formats.js').then(x => x.openFormatDownload({ weekStart }))),
       h('span', { class: 'menu-head' }, 'This term'),
       item('chart', 'Term progress (ATP coverage)', () => { location.hash = 'progress/' + (tw?.term || ''); }),
       item('upload', 'Upload a term plan', () => openTermPlanUpload(tw?.term)),

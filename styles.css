@@ -1179,6 +1179,26 @@ dialog #toast { position: fixed; }
 .area-tabs button { padding: .45rem 1rem; font-size: .95rem; font-weight: 700; }
 .area-tabs b { font-weight: 400; opacity: .7; margin-left: .2rem; }
 
+
+/* ---------- School formats ---------- */
+.format-list { list-style: none; padding: 0; margin: 0 0 .9rem; display: grid; gap: .5rem; }
+.format-list li { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: center; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--sheet); }
+.fl-main { display: grid; min-width: 0; }
+.fl-ic { color: var(--blue); }
+@media (max-width: 700px) { .format-list li { grid-template-columns: auto 1fr; } .format-list li > .row { grid-column: 1 / -1; } }
+.format-setup { display: grid; gap: .9rem; }
+.format-setup h3 { margin: .4rem 0 0; }
+.slot-list { display: grid; gap: .35rem; }
+.slot-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(12rem, 1fr); gap: .6rem; align-items: center; padding: .35rem .5rem; border-radius: var(--radius-s); background: var(--paper); border: 1px solid var(--line); }
+.slot-row.unset { border-style: dashed; }
+.slot-row svg { color: var(--ink-2); }
+.slot-label { font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .slot-row { grid-template-columns: 1fr; } .slot-row svg { display: none; } }
+.callout { border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius-s); padding: .7rem .9rem; background: var(--sheet); }
+.callout.warn { border-left-color: var(--warn); }
+.callout p:last-child { margin-bottom: 0; }
+.format-dl { display: grid; gap: .8rem; }
+
 /* ---------- Look picker (Settings) ---------- */
 .look-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: .75rem; margin: .4rem 0 1rem; }
 .look-card { display: grid; gap: .3rem; justify-items: start; text-align: left; padding: .6rem .6rem .75rem; border: 2px solid var(--line); border-radius: var(--radius-m); background: var(--sheet); color: var(--ink); cursor: pointer; font: inherit; }

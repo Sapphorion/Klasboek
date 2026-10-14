@@ -2,6 +2,7 @@ import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '.
 import { openInstall } from './install.js';
 import { accountSection } from './account.js';
 import { yearsSection } from './yearui.js';
+import { formatsSection } from './formats.js';
 import { displaySection, lookSection } from './display.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
@@ -53,6 +54,7 @@ function view() {
     h('p', { class: 'muted small' }, 'Term dates decide which ATP week each calendar week is. Defaults are the public school calendar; change them if your school differs.'),
     h('p', { class: 'small' }, h('strong', {}, `${s.year} term dates`), DEFAULT_TERMS[s.year] ? h('button', { class: 'link small', style: { marginLeft: '.6rem' }, onclick: () => { saveSettings({ terms: DEFAULT_TERMS[s.year].map(([start, end]) => ({ start, end })) }); s.terms = state.settings.terms; drawTerms(); } }, 'Reset to the public calendar') : null),
     termsBox));
+  page.append(formatsSection());
   page.append(yearsSection());
 
   // ---------- Planner ----------

@@ -119,7 +119,8 @@ function docTab(l, what, save, draw, m, ctx) {
     h('div', { class: 'doc-bar' }, viewEditSeg(draw),
       expBtn('Download (Word)', 'download', () => exportLessonPlanDocx(l)),
       h('button', { class: 'btn ghost sm', onclick: () => printLesson(l, 'plan') }, icon('print'), 'Print / PDF'),
-      shareBtn('Share', () => exportLessonPlanDocx(l, { get: true }), l.title)),
+      shareBtn('Share', () => exportLessonPlanDocx(l, { get: true }), l.title),
+      h('button', { class: 'btn ghost sm', title: 'Fill in your school’s own lesson plan form', onclick: () => import('./formats.js').then(x => x.openFormatDownload({ lesson: l })) }, icon('doc', 16), 'School format')),
     editing ? planEditor(l.content, save, ctx) : preview(lessonDocHtml(l, 'plan')),
   ];
 }
