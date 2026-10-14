@@ -3,7 +3,7 @@
 import { state, saveSettings, subjectById, classLabel } from '../state.js';
 import { h, icon, toast, modal, confirmBox, dropZone, download, busy, safeName, shareFile } from '../ui.js';
 import { today, mondayOf, addDays, fmt } from '../dates.js';
-import { FIELDS, GRID_FIELDS, fieldLabel, readFormatFile, fillFormat, previewHtml } from '../docxfill.js';
+import { FIELDS, GRID_FIELDS, fieldLabel, readFormatFile, fillFormat, previewHtml, cycleDayOf } from '../docxfill.js';
 import { onChange } from '../state.js';
 import { classesOf } from './progress.js';
 
@@ -172,27 +172,38 @@ export function openWeeklyPlanner(weekStart) {
     const m = modal('Weekly planner', h('div', {}, h('p', {}, 'Upload your school’s weekly planner (Word or Excel) and it fills itself in from the planner as you plan. You see it here and download it whenever it has to be handed in.'), formatsSection(() => { m.close(); openWeeklyPlanner(weekStart); })), { wide: true });
     return m;
   }
-  let mon = weekStart, key = '*', fid = weeklyFormat().id, seq = 0;
+  let mon = weekStart, key = '*', fid = weeklyFormat().id, seq = 0, picked = false;
+  // Forms made for certain cycle days (WK1 = Days 1–5, WK2 = Days 6–10): use the one that fits the week on screen.
+  const cycDays = f => new Set((f.tables || []).filter(t => t.kind === 'grid').flatMap(t => t.orient === 'rows' ? t.days.map(d => d.d) : Object.values(t.dayCols)).filter(d => d >= 100).map(d => d - 100));
+  const fitFor = m => {
+    const pos = [0, 1, 2, 3, 4].map(i => cycleDayOf(addDays(m, i))).filter(Boolean);
+    let best = null, score = 0;
+    for (const f of formats()) { const set = cycDays(f); if (!set.size) continue; const n = pos.filter(p => set.has(p)).length; if (n > score) { score = n; best = f; } }
+    return best;
+  };
   const opts = state.subjects.flatMap(s => classesOf(s).map(cls => ({ s, cls, key: s.id + '|' + cls })));
   const pv = h('div', { class: 'school-pv', 'aria-live': 'polite' });
   const bar = h('div', { class: 'row wrap school-pv-bar' });
   const info = h('p', { class: 'muted small' });
   let blob = null;
   const draw = async () => {
+    if (!picked) { const fit = fitFor(mon); if (fit) fid = fit.id; }
     const f = formats().find(x => x.id === fid) || weeklyFormat(); fid = f.id;
+    const days = [0, 1, 2, 3, 4].map(i => cycleDayOf(addDays(mon, i))).filter(Boolean);
     const ls = lessonsIn(mon, addDays(mon, 6), key);
     bar.replaceChildren(
       h('button', { class: 'icon-btn', 'aria-label': 'Previous week', onclick: () => { mon = addDays(mon, -7); draw(); } }, icon('left')),
       h('strong', {}, `${fmt(mon)} – ${fmt(addDays(mon, 4), { day: 'numeric', month: 'short', year: 'numeric' })}`),
       h('button', { class: 'icon-btn', 'aria-label': 'Next week', onclick: () => { mon = addDays(mon, 7); draw(); } }, icon('right')),
-      formats().length > 1 ? h('select', { class: 'sm', 'aria-label': 'Form', onchange: async e => { fid = e.target.value; await saveSettings({ weeklyFormat: fid }); draw(); } }, ...formats().map(x => h('option', { value: x.id, selected: x.id === fid }, x.name))) : h('span', { class: 'muted small' }, f.name),
+      formats().length > 1 ? h('select', { class: 'sm', 'aria-label': 'Form', onchange: async e => { fid = e.target.value; picked = true; await saveSettings({ weeklyFormat: fid }); draw(); } }, ...formats().map(x => h('option', { value: x.id, selected: x.id === fid }, x.name))) : h('span', { class: 'muted small' }, f.name),
       h('select', { class: 'sm', 'aria-label': 'Class', onchange: e => { key = e.target.value; draw(); } }, h('option', { value: '*', selected: key === '*' }, 'All my classes'), ...opts.map(o => h('option', { value: o.key, selected: o.key === key }, classLabel(o.s, o.cls)))),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn ghost sm', onclick: () => openFormatSetup(f, false, draw) }, 'Check the blanks'),
       h('button', { class: 'btn ghost sm', disabled: !ls.length, onclick: () => blob && shareFile({ blob, name: fileName(f) }, f.name) }, icon('paper', 16), 'Share'),
       h('button', { class: 'btn sm', disabled: !ls.length, onclick: () => { if (blob) { download(blob, fileName(f)); toast(blob.note || `Downloaded. Open it in ${app(f)} to check before you send it.`, blob.note ? 'warn' : 'ok'); } } }, icon('download', 16), `Download (${app(f)})`));
     const unprepared = ls.filter(l => !l.content).length;
-    info.textContent = ls.length ? `Filled in from ${ls.length} lesson${ls.length === 1 ? '' : 's'} on the planner. It updates as you plan.` + (f.kind === 'lesson' ? ' (This form is set up as a single lesson plan, so each lesson gets its own page.)' : '') + (unprepared && f.kind === 'lesson' ? ` ${unprepared} not prepared yet.` : '') : 'Nothing planned this week yet. As you plan lessons, they appear in the form here.';
+    const dayNote = cycDays(f).size && days.length && (state.timetable.cycle || 1) === 2 ? `Timetable days ${days[0]}–${days.at(-1)}. ` : '';
+    info.textContent = dayNote + (ls.length ? `Filled in from ${ls.length} lesson${ls.length === 1 ? '' : 's'} on the planner. It updates as you plan.` + (f.kind === 'lesson' ? ' (This form is set up as a single lesson plan, so each lesson gets its own page.)' : '') + (unprepared && f.kind === 'lesson' ? ` ${unprepared} not prepared yet.` : '') : 'Nothing planned this week yet. As you plan lessons, they appear in the form here.');
     const my = ++seq;
     try {
       blob = await fillFormat(f, ls, { weekStart: mon });

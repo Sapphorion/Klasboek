@@ -3,6 +3,8 @@
 import { state, subjectById, atpById } from './state.js';
 import { fmt, termWeekOf, mondayOf, addDays, weekdayIndex, minutesBetween } from './dates.js';
 import { siyavulaFor } from './siyavula.js';
+import { ttDayFor } from './ttday.js';
+import { classLabel } from './state.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const XMLNS = 'http://www.w3.org/XML/1998/namespace';
@@ -96,6 +98,9 @@ export const FIELDS = [
   { id: 'gradeClass', label: 'Grade and class (e.g. 10A)', re: /grade.{0,4}(class|klas)|(class|klas).{0,4}grade|graad.{0,4}klas|klas.{0,4}graad/i },
   { id: 'grade', label: 'Grade', re: /grade|graad|^gr\.?$/i },
   { id: 'class', label: 'Class', re: /class|klas/i },
+  { id: 'weekStart', label: 'First day of the week (date)', re: /^(from|van|date from|week start)$/i },
+  { id: 'weekEnd', label: 'Last day of the week (date)', re: /^(to|tot|until|till|date to|week end)$/i },
+  { id: 'planner', label: 'As on the planner (subject, grade and class, topic, today’s part)' },
   { id: 'weekRange', label: 'Week dates (Mon to Fri)', re: /week (of|ending|beginning|starting)|week dates|for the week|weeksdatum/i },
   { id: 'term', label: 'Term', re: /^term\b|kwartaal|^kw\b/i },
   { id: 'week', label: 'Week', re: /^week|week no|week number|weeknommer/i },
@@ -106,6 +111,7 @@ export const fieldLabel = id => FIELDS.find(f => f.id === id)?.label || 'Leave b
 export function guessField(label) {
   const t = String(label || '').replace(/[:：*_.…]+\s*$/, '').trim();
   if (!t) return '';
+  if (/(planning|planner|plan|beplanning|program)\s+(of|for|van)\b/i.test(t)) return 'teacher';
   const f = FIELDS.find(f => f.re && f.re.test(t));
   return f ? f.id : '';
 }
@@ -138,6 +144,9 @@ export function valuesFor(l) {
     time: period ? `Period ${period.label}${period.start ? ` (${period.start}–${period.end})` : ''}` : '',
     duration: minutes ? `${minutes} minutes` : '',
     term: tw ? String(tw.term) : '', week: tw ? String(tw.week) : '',
+    weekStart: mon ? fmt(mon, { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+    weekEnd: mon ? fmt(addDays(mon, 4), { day: 'numeric', month: 'long', year: 'numeric' }) : '',
+    planner: l.subjectId ? [classLabel(subj, l.cls), l.title || a?.topic || '', l.subtopic || ''].filter(Boolean).join('\n') : '',
     weekRange: mon ? `${fmt(mon)} – ${fmt(addDays(mon, 4), { day: 'numeric', month: 'short', year: 'numeric' })}` : '',
     topic: a?.topic || l.title || '', subtopic: l.subtopic || '', title: c.title || l.title || a?.topic || '',
     content: a?.details || '',
@@ -163,7 +172,7 @@ export function valuesFor(l) {
 function joinValues(lessons, field) {
   const vals = lessons.map(l => valuesFor(l)[field] || '').filter(Boolean);
   const uniq = [...new Set(vals)];
-  if (['teacher', 'school', 'term', 'week', 'weekRange', 'day'].includes(field) || (uniq.length === 1 && vals.length === lessons.length)) return vals[0] || '';
+  if (['teacher', 'school', 'term', 'week', 'weekRange', 'weekStart', 'weekEnd', 'day'].includes(field) || (uniq.length === 1 && vals.length === lessons.length)) return vals[0] || '';
   if (['subject', 'grade', 'class', 'gradeClass', 'date', 'topic'].includes(field) && uniq.length === 1) return uniq[0];
   if (['subject', 'grade', 'class', 'gradeClass'].includes(field)) return uniq.join(', ');
   if (lessons.length > 1 && !['day', 'date', 'time'].includes(field)) return lessons.map(l => { const v = valuesFor(l)[field]; return v ? `${valuesFor(l).class ? valuesFor(l).class + ': ' : ''}${v}` : ''; }).filter(Boolean).join('\n');
@@ -180,13 +189,15 @@ const DAYIDX = { mon: 0, maa: 0, ma: 0, tue: 1, din: 1, di: 1, wed: 2, woe: 2, w
 const dayOf = t => { if (t == null) return -1; const x = String(t).trim().toLowerCase().replace(/\s*\d.*$/, ''); if (!WEEKDAY.test(x)) return -1; return DAYIDX[x.slice(0, 3)] ?? DAYIDX[x.slice(0, 2)] ?? -1; };
 const PERIODISH = /^(p(er(iod)?|eriode)?\.?\s*|les\s*|lesson\s*)?\d{1,2}\b|^\d{1,2}[:h.]\d{2}/i;
 const BREAKISH = /break|interval|pouse|lunch|recess|assembl|saal|register|registra|reg\.?$|tea\b|devotion|oggend/i;
-export const GRID_FIELDS = ['gradeClass', 'subject', 'topic', 'subtopic', 'title', 'objectives', 'main', 'resources', 'assessment', 'homework'];
+export const GRID_FIELDS = ['planner', 'subject', 'grade', 'class', 'gradeClass', 'topic', 'subtopic', 'title', 'objectives', 'main', 'resources', 'assessment', 'homework'];
 
 // A week grid: days across the top and periods down the side, or the other way round.
+// "1"… "10" or "Day 3" in a DAY column: the school's Day 1–10 cycle. Stored as 100 + the day number.
+const cycDay = (t, needWord) => { const m = String(t ?? '').trim().match(needWord ? /^(?:day|dag)\s*(\d{1,2})$/i : /^(?:day|dag)?\s*(\d{1,2})$/i); return m && +m[1] >= 1 && +m[1] <= 20 ? 100 + +m[1] : -1; };
 function findGrid(rows) {
   for (let r = 0; r < rows.length - 1; r++) {
     const dayCols = {};
-    rows[r].forEach((t, c) => { const d = dayOf(t); if (d >= 0 && !(Object.values(dayCols).includes(d))) dayCols[c] = d; });
+    rows[r].forEach((t, c) => { const d = dayOf(t) >= 0 ? dayOf(t) : cycDay(t, true); if (d >= 0 && !(Object.values(dayCols).includes(d))) dayCols[c] = d; });
     const dc = Object.keys(dayCols).map(Number);
     if (dc.length < 3) continue;
     const body = [];
@@ -200,7 +211,8 @@ function findGrid(rows) {
     while (body.length && !body.at(-1).label) body.pop(); // empty rows after the last period
     if (body.filter(b => !b.brk).length >= 2) return { orient: 'cols', header: r, dayCols, rows: body };
   }
-  const days = rows.map((row, k) => ({ r: k, d: dayOf(row[0]) })).filter(x => x.d >= 0);
+  let days = rows.map((row, k) => ({ r: k, d: dayOf(row[0]) })).filter(x => x.d >= 0);
+  if (days.length < 3) days = rows.map((row, k) => ({ r: k, d: cycDay(row[0], false) })).filter(x => x.d >= 0);
   if (days.length >= 3) {
     for (let r = days[0].r - 1; r >= 0; r--) {
       const cols = [];
@@ -223,7 +235,7 @@ function analyseTables(tables) {
   tables.forEach((rows, ti) => {
     const grid = findGrid(rows);
     if (grid) {
-      defs.push({ ti, kind: 'grid', many: true, cellFields: ['gradeClass', 'topic', 'subtopic'], ...grid });
+      defs.push({ ti, kind: 'grid', many: true, cellFields: ['planner'], ...grid });
       if (grid.orient === 'cols') for (let k = grid.header; k <= grid.rows.at(-1).r; k++) used.add(`${ti}:${k}`);
       else { used.add(`${ti}:${grid.header}`); grid.days.forEach(d => used.add(`${ti}:${d.r}`)); }
     } else {
@@ -286,13 +298,18 @@ function periodFor(label, ordinal) {
   if (n && !tm) { const p = P.find(p => String(p.label) === String(+n[0])); if (p) return p; }
   return P[ordinal] || null;
 }
+// Which day of the timetable cycle a date is (Day 1–10 for a two-week cycle).
+export function cycleDayOf(date) { const p = ttDayFor(date); return p ? (p.week - 1) * state.timetable.days.length + p.day + 1 : 0; }
+const onDay = (l, d) => !!l.date && (d >= 100 ? cycleDayOf(l.date) === d - 100 : weekdayIndex(l.date) === d);
 const gridText = (ls, fields) => ls.map(l => { const v = valuesFor(l); return fields.map(f => v[f]).filter(Boolean).join('\n'); }).filter(Boolean).join('\n\n');
 // The same filling logic for Word and Excel: `w` knows how to write into its own file type.
 function fillAll(w, format, lessons, valueOf) {
-  for (const s of format.slots) {
+  const order = format.slots.slice().sort((a, b) => a.kind === 'pblank' && b.kind === 'pblank' && a.pi === b.pi ? b.n - a.n : 0);
+  for (const s of order) {
     if (!s.field || s.kind === 'tag') continue;
     const v = valueOf(s.field);
-    if (s.kind === 'para') w.para(s.pi, v);
+    if (s.kind === 'pblank') { if (s.field !== 'blank') w.pblank?.(s.pi, s.n, v); }
+    else if (s.kind === 'para') w.para(s.pi, v);
     else if (s.kind === 'inline') w.inline(s.ti, s.r, s.c, v);
     else w.cell(s.ti, s.r, s.c, v);
   }
@@ -306,7 +323,7 @@ function fillAll(w, format, lessons, valueOf) {
           if (row.brk) continue;
           const p = periodFor(row.label, ord++); if (!p) continue;
           for (const [c, d] of Object.entries(t.dayCols)) {
-            const ls = lessons.filter(l => l.date && weekdayIndex(l.date) === d && l.periodId === p.id);
+            const ls = lessons.filter(l => onDay(l, d) && l.periodId === p.id);
             if (ls.length) w.cell(t.ti, row.r, +c, gridText(ls, fields));
           }
         }
@@ -316,7 +333,7 @@ function fillAll(w, format, lessons, valueOf) {
           if (col.brk) continue;
           const p = periodFor(col.label, ord++); if (!p) continue;
           for (const day of t.days) {
-            const ls = lessons.filter(l => l.date && weekdayIndex(l.date) === day.d && l.periodId === p.id);
+            const ls = lessons.filter(l => onDay(l, day.d) && l.periodId === p.id);
             if (ls.length) w.cell(t.ti, day.r, col.c, gridText(ls, fields));
           }
         }
@@ -356,9 +373,23 @@ function analyseDocx(xml) {
   const doc = parseXml(xml);
   const r = analyseTables(allTables(doc).map(tbl => rowsOf(tbl).map(tr => cellsOf(tr).map(cellText))));
   loneParas(doc).forEach((p, pi) => {
-    const x = textOf(p).trim();
-    const m = x.match(INLINE);
-    if (m && isEmpty(x.slice(m[1].length))) r.slots.push({ kind: 'para', pi, label: m[1].trim(), field: guessField(m[1]) });
+    const x = textOf(p);
+    // Lines with one or more ____ blanks: "TERM: ____ DATE: ______ TO ______".
+    if (/_{3,}/.test(x)) {
+      const parts = []; let last = 0, prev = '';
+      for (const m of x.matchAll(/_{3,}/g)) {
+        const label = x.slice(last, m.index).replace(/[:：]/g, ' ').trim() || prev;
+        parts.push({ kind: 'pblank', pi, n: parts.length, label, field: guessField(label) }); prev = label; last = m.index + m[0].length;
+      }
+      // Everything on a signature line stays empty (its DATE is the date of signing).
+      if (parts.some(b => b.field === 'blank')) parts.forEach(b => { b.field = 'blank'; });
+      // On a weekly form, a DATE … TO … line is the week.
+      parts.forEach((b, i) => { if (b.field === 'weekEnd' && parts[i - 1]?.field === 'date') parts[i - 1].field = 'weekStart'; });
+      r.slots.push(...parts);
+      return;
+    }
+    const t = x.trim(), m = t.match(INLINE);
+    if (m && isEmpty(t.slice(m[1].length))) r.slots.push({ kind: 'para', pi, label: m[1].trim(), field: guessField(m[1]) });
   });
   r.slots.push(...tagSlots(xml.replace(/<[^>]+>/g, '')));
   return r;
@@ -406,6 +437,21 @@ function docxWriter(doc) {
     cell(ti, r, c, v) { const [tc, tr] = tcAt(ti, r, c); if (tc) setTc(doc, tc, v, tr); },
     inline(ti, r, c, v) { const [tc] = tcAt(ti, r, c); const p = tc && kids(tc, 'p').find(x => /[:：]/.test(textOf(x))); if (p) fillAfterColon(doc, p, v); },
     para(pi, v) { if (paras[pi]) fillAfterColon(doc, paras[pi], v); },
+    // Put text in place of the n-th ____ on a line, keeping the rest of the line as it is.
+    pblank(pi, n, v) {
+      const p = paras[pi]; if (!p || !v) return;
+      const ts = [...p.getElementsByTagNameNS(W, 't')];
+      const full = ts.map(t => t.textContent).join('');
+      const m = [...full.matchAll(/_{3,}/g)][n]; if (!m) return;
+      if (/\b20\d\d\b/.test(full.slice(m.index + m[0].length, m.index + m[0].length + 8))) v = String(v).replace(/\s+20\d\d$/, '');
+      const start = m.index, end = start + m[0].length;
+      let g = 0;
+      for (const t of ts) {
+        const txt = t.textContent; let out = '';
+        for (let k = 0; k < txt.length; k++, g++) { if (g >= start && g < end) { if (g === start) out += ' ' + v + ' '; } else out += txt[k]; }
+        if (out !== txt) { t.textContent = out; t.setAttributeNS(XMLNS, 'xml:space', 'preserve'); }
+      }
+    },
     dayAt(ti, r) { const [tc] = tcAt(ti, r, 0); return tc ? dayOf(cellText(tc)) : -1; },
     addRow(ti, lastBody, n) {
       const rows = rowsCache[ti]; const last = rows[lastBody + n - 1] || rows[lastBody];
@@ -613,7 +659,7 @@ export async function fillFormat(format, lessons, { weekStart } = {}) {
   const sorted = lessons.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.periodId || '').localeCompare(b.periodId || ''));
   const wk = weekStart || (sorted[0]?.date ? mondayOf(sorted[0].date) : '');
   const base = wk ? valuesFor({ date: wk }) : { teacher: state.settings.teacherName || '', school: state.settings.school || '' };
-  const weekVal = f => ['teacher', 'school', 'term', 'week', 'weekRange'].includes(f) ? base[f] || '' : '';
+  const weekVal = f => ['teacher', 'school', 'term', 'week', 'weekRange', 'weekStart', 'weekEnd'].includes(f) ? base[f] || '' : '';
   return format.type === 'xlsx' ? fillXlsx(format, files, sorted, weekVal) : fillDocx(format, files, sorted, weekVal);
 }
 
