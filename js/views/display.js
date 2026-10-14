@@ -16,15 +16,16 @@ export const THEMES = [
   ['night', 'Night', 'Dark everywhere, easy on the eyes in the evening.'],
 ];
 export const MENUS = [
-  ['side', 'Side menu', 'Menu down the left with names.'],
+  ['auto', 'Automatic', 'Names on a big screen, icons on a tablet, a bottom bar on small screens.'],
+  ['side', 'Side menu with names', 'Menu down the left with names, on every screen.'],
   ['icons', 'Icons only', 'A narrow menu, so pages get more room.'],
   ['top', 'Across the top', 'Menu along the top. The planner gets the full width.'],
 ];
 const get = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
 export const currentTheme = () => get('klasboek.theme', 'chalk');
-export const currentMenu = () => get('klasboek.menu', 'side');
+export const currentMenu = () => get('klasboek.menu', 'auto');
 export function setLook(kind, v) {
-  const key = 'klasboek.' + kind, def = kind === 'theme' ? 'chalk' : 'side';
+  const key = 'klasboek.' + kind, def = kind === 'theme' ? 'chalk' : 'auto';
   try { if (v === def) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch {}
   const d = document.documentElement;
   if (v === def) delete d.dataset[kind]; else d.dataset[kind] = v;
@@ -52,7 +53,8 @@ export function lookSection() {
       h('div', { class: 'look-grid', role: 'radiogroup', 'aria-label': 'Colours' }, THEMES.map(x => card('theme', x, x[0] === t, mini(x[0], m)))),
       h('h3', {}, 'Menu'),
       h('div', { class: 'look-grid', role: 'radiogroup', 'aria-label': 'Menu' }, MENUS.map(x => card('menu', x, x[0] === m, mini(t, x[0])))),
-      h('p', { class: 'muted small' }, 'On a phone the menu always sits along the bottom, where your thumb can reach it.'));
+      h('p', { class: 'muted small' }, 'On a phone the menu always sits along the bottom, where your thumb can reach it.'),
+      h('p', { class: 'muted small' }, `This screen is ${window.innerWidth} points wide${window.innerWidth < 600 ? ', so it counts as a phone and the menu stays at the bottom.' : '.'}`));
   };
   draw();
   return sec;
