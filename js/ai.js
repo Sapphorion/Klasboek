@@ -22,23 +22,56 @@ export function aiUnavailableReason() {
 // Put lists back into shape wherever one is expected, so nothing downstream trips over it.
 const LIST_KEYS = new Set(['blocks', 'slides', 'cards', 'criteria', 'levels', 'options', 'items', 'terms', 'rows', 'fns', 'points', 'instructions', 'bullets', 'descriptors',
   'questions', 'phases', 'objectives', 'vocabulary', 'sections', 'keyPoints', 'resources', 'events', 'cells', 'periods', 'topics', 'weeks', 'notes_sections']);
-function asList(v) {
+class ShapeError extends Error {}
+// Make a JSON-ish string parse: escape stray backslashes (LaTeX like \frac), raw line breaks inside
+// strings, and close brackets if the end was cut off.
+export function lenientJson(t) {
+  try { return JSON.parse(t); } catch {}
+  let o = '', inStr = false, stack = [];
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (c === '\\') { const n = t[i + 1]; if (n && '"\\/bfnrtu'.includes(n) && !(n === 'u' && !/^[0-9a-fA-F]{4}$/.test(t.slice(i + 2, i + 6)))) { o += c + n; i++; } else o += '\\\\'; continue; }
+      if (c === '"') { inStr = false; o += c; continue; }
+      if (c === '\n') { o += '\\n'; continue; } if (c === '\r') continue; if (c === '\t') { o += '\\t'; continue; }
+      o += c; continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '[' || c === '{') stack.push(c === '[' ? ']' : '}');
+    else if (c === ']' || c === '}') stack.pop();
+    o += c;
+  }
+  try { return JSON.parse(o); } catch {}
+  // Cut off part-way: close what's open.
+  let tail = o + (inStr ? '"' : '');
+  tail = tail.replace(/,\s*$/, '').replace(/,\s*"[^"]*"\s*:?\s*$/, '').replace(/:\s*$/, ': null');
+  try { return JSON.parse(tail + stack.slice().reverse().join('')); } catch {}
+  return undefined;
+}
+const STRUCTURED = new Set(['blocks', 'slides', 'cards', 'criteria', 'levels', 'questions', 'phases', 'sections', 'rows', 'cells', 'events', 'periods', 'weeks', 'topics', 'fns', 'points', 'vocabulary']);
+function asList(v, key = '') {
   if (Array.isArray(v)) return v;
   if (v == null || v === '') return [];
   if (typeof v === 'string') {
     const t = v.trim();
-    if (/^[\[{]/.test(t)) { try { return asList(JSON.parse(t)); } catch { /* cut off or not JSON */ } }
-    if (/^\[/.test(t)) throw new Error('The AI’s answer came back incomplete. Please try again (a shorter piece, or fewer marks, helps).');
+    if (/^[\[{]/.test(t)) {
+      const p = lenientJson(t);
+      if (p !== undefined && p !== null) return asList(p, key);
+      // A list of questions or blocks sent as broken text: ask Claude again rather than lose it.
+      if (STRUCTURED.has(key) || /^\[\s*[{"]/.test(t)) throw new ShapeError(key);
+    }
     return t.split('\n').map(x => x.trim()).filter(Boolean);
   }
   if (typeof v === 'object') { const keys = Object.keys(v); if (keys.length && keys.every(k => /^\d+$/.test(k))) return keys.sort((a, b) => a - b).map(k => v[k]); return [v]; }
   return [v];
 }
 export function repair(x, key = '') {
-  if (LIST_KEYS.has(key)) x = asList(x);
+  if (LIST_KEYS.has(key)) x = asList(x, key);
   if (Array.isArray(x)) return x.map(v => repair(v, key === 'rows' ? 'row' : ''));
-  if (key === 'row' && !Array.isArray(x)) return asList(x);
+  if (key === 'row' && !Array.isArray(x)) return asList(x, 'row');
   if (x && typeof x === 'object') { for (const k of Object.keys(x)) x[k] = repair(x[k], k); return x; }
+  // LaTeX read as JSON escapes: \frac became a form feed, \times a tab. Put the backslash back.
+  if (typeof x === 'string' && /[\f\x08\t]/.test(x)) return x.replace(/\f/g, '\\f').replace(/\x08/g, '\\b').replace(/\t(?=imes|heta|ext|an\b|riangle|o\b|frac)/g, '\\t');
   return x;
 }
 
@@ -54,14 +87,27 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
   // and the system prompt tells Claude to answer through it. One retry if it doesn't.
   const sys = `${system}\n\nAlways answer by calling the ${tool.name} tool exactly once with the complete result. Do not write any other text.`;
   const messages = [{ role: 'user', content }];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let shapeRetry = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
     const j = await post({ system: sys, messages, tool, maxTokens });
     const block = j.content?.find(b => b.type === 'tool_use' && b.name === tool.name);
-    if (j.stop_reason === 'max_tokens') throw new Error('The answer was too long and got cut off. Try a shorter piece or fewer marks, or pick Claude Opus in Settings.');
-    if (block && block.input && Object.keys(block.input).length) return repair(unwrap(block.input, tool));
-    const text = (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const parsed = jsonFrom(text);
-    if (parsed) return repair(unwrap(parsed, tool));
+    if (j.stop_reason === 'max_tokens') throw new Error('The answer was too long and got cut off. Try fewer marks, or split it into two shorter pieces (e.g. Section A and Section B).');
+    let raw = block && block.input && Object.keys(block.input).length ? block.input : null;
+    if (!raw) { const parsed = jsonFrom((j.content || []).filter(b => b.type === 'text').map(b => b.text).join('')); if (parsed) raw = parsed; }
+    if (raw) {
+      try { return repair(unwrap(raw, tool)); }
+      catch (e) {
+        if (!(e instanceof ShapeError) || shapeRetry) throw new Error('The AI sent its answer in a shape Klasboek couldn’t read. Please tap the button again; it usually works on the second try.');
+        shapeRetry = true;
+        progressFn?.('Tidying the answer…'); window.dispatchEvent(new CustomEvent('ai-progress', { detail: 'Tidying the answer…' }));
+        const id = block?.id;
+        messages.push({ role: 'assistant', content: j.content },
+          id ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: `The "${e.message}" field arrived as a text string instead of a JSON array, so it couldn't be read. Call ${tool.name} again with the complete result, with every list as a real JSON array (not a string). Keep the same content.` }] }
+             : { role: 'user', content: `Please call ${tool.name} again with every list as a real JSON array, not a string.` });
+        continue;
+      }
+    }
+    if (attempt >= 1) break;
     messages.push({ role: 'assistant', content: j.content?.length ? j.content : [{ type: 'text', text: '…' }] },
       { role: 'user', content: `Please give the complete result by calling the ${tool.name} tool now.` });
   }
@@ -159,8 +205,9 @@ async function readStream(body) {
     if (b.type !== 'tool_use') return;
     const raw = json[k] || '';
     if (!raw.trim()) { b.input = b.input || {}; return; }
-    try { b.input = JSON.parse(raw); }
-    catch { b.input = {}; if (!out.stop_reason || out.stop_reason === 'end_turn') out.stop_reason = 'max_tokens'; }
+    const p = out.stop_reason === 'max_tokens' ? undefined : lenientJson(raw);
+    if (p && typeof p === 'object') b.input = p;
+    else { b.input = {}; if (!out.stop_reason || out.stop_reason === 'end_turn') out.stop_reason = 'max_tokens'; }
   });
   return out;
 }
@@ -168,7 +215,8 @@ async function readStream(body) {
 function jsonFrom(text) {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
-  try { return JSON.parse(m[0]); } catch { return null; }
+  const p = lenientJson(m[0]);
+  return p && typeof p === 'object' ? p : null;
 }
 
 export async function testKey() {
