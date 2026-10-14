@@ -89,6 +89,7 @@ function view() {
       h('a', { class: 'btn ghost', href: '#calendar/' + weekStart }, icon('month'), 'Calendar'),
       h('button', { class: 'btn', onclick: () => openTell(weekStart, days), title: 'Say what’s different this week, e.g. “Wednesday prize giving”' }, icon('pen'), 'Tell the planner'),
       h('button', { class: 'btn ghost', onclick: autoPlan, title: 'Place this week’s ATP topics into your timetable slots' }, icon('wand'), 'Auto-plan week'),
+      (state.settings.formats || []).some(f => f.kind === 'table') ? h('button', { class: 'btn ghost', title: 'Download the school’s weekly planner, filled in from this week', onclick: e => { const b = e.currentTarget; import('./formats.js').then(x => x.downloadWeekly(weekStart, b)); } }, icon('download'), 'Weekly planner') : null,
       moreMenu(tw, days),
     ),
   ));
