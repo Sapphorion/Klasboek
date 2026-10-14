@@ -3,7 +3,8 @@
 import { state, saveSettings, subjectById, classLabel } from '../state.js';
 import { h, icon, toast, modal, confirmBox, dropZone, download, busy, safeName, shareFile } from '../ui.js';
 import { today, mondayOf, addDays, fmt } from '../dates.js';
-import { FIELDS, GRID_FIELDS, fieldLabel, readFormatFile, fillFormat } from '../docxfill.js';
+import { FIELDS, GRID_FIELDS, fieldLabel, readFormatFile, fillFormat, previewHtml } from '../docxfill.js';
+import { onChange } from '../state.js';
 import { classesOf } from './progress.js';
 
 export const formats = () => state.settings.formats || [];
@@ -14,7 +15,7 @@ const KIND = { lesson: 'Lesson plan: one page per lesson', table: 'Weekly or ter
 const ext = f => f.type === 'xlsx' ? '.xlsx' : '.docx';
 const app = f => f.type === 'xlsx' ? 'Excel' : 'Word';
 // The weekly planner gets its own button on the planner.
-export const weeklyFormat = () => { const l = formats(); return l.find(f => f.id === state.settings.weeklyFormat) || l.find(f => f.kind === 'table'); };
+export const weeklyFormat = () => { const l = formats(); return l.find(f => f.id === state.settings.weeklyFormat) || l.find(f => f.kind === 'table') || l[0]; };
 export async function downloadWeekly(weekStart, btn) {
   const f = weeklyFormat(); if (!f) { openFormatDownload({ weekStart }); return; }
   const ls = lessonsIn(weekStart, addDays(weekStart, 6), '*');
@@ -27,7 +28,7 @@ export async function downloadWeekly(weekStart, btn) {
   } catch (e) { toast(e.message, 'error'); } finally { done(); }
 }
 
-export function formatsSection() {
+export function formatsSection(onSaved) {
   const sec = h('section', { class: 'card-sec formats-sec' });
   const draw = () => {
     const list = formats();
@@ -45,7 +46,7 @@ export function formatsSection() {
         try {
           const r = await readFormatFile(file);
           const f = { id: uid(), name: file.name.replace(/\.(docx|xlsx|xlsm)$/i, ''), added: new Date().toISOString(), ...r };
-          openFormatSetup(f, true, draw);
+          openFormatSetup(f, true, () => { draw(); onSaved?.(); });
         } catch (e) { toast(e.message, 'error'); }
       } }));
   };
@@ -66,7 +67,7 @@ export function openFormatSetup(orig, isNew, onDone = () => {}) {
       h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'This form is for'),
         h('div', { class: 'seg', role: 'radiogroup' }, ...Object.entries(KIND).map(([k, label]) => h('button', { role: 'radio', 'aria-checked': String(f.kind === k), onclick: () => { f.kind = k; draw(); } }, label))),
         h('span', { class: 'hint' }, f.kind === 'table' ? 'All the lessons you choose go into one document: a box per period, a row per lesson, or a row per day.' : f.type === 'xlsx' ? 'Each lesson gets its own sheet in one Excel file.' : 'Each lesson gets its own copy of the form, one after the other in one Word file.')),
-      f.kind === 'table' ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: (state.settings.weeklyFormat || weeklyFormat()?.id) === f.id || (!weeklyFormat() && true), onchange: e => { f._weekly = e.target.checked; } }), 'This is my weekly planner: put a “Weekly planner” button on the planner that downloads it filled in for the week on screen') : null,
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: (state.settings.weeklyFormat || weeklyFormat()?.id) === f.id || (!weeklyFormat() && true), onchange: e => { f._weekly = e.target.checked; } }), 'This is my weekly planner: show it on the planner, filled in from the week on screen'),
       nothing ? h('div', { class: 'callout warn' },
         h('p', {}, h('strong', {}, 'Klasboek couldn’t find any blanks in this form.'), ' It looks for a label (like “Topic” or “Date:”) with an empty box or line next to or under it.'),
         h('p', { class: 'small' }, 'You can also type tags into the Word form where things should go, then upload it again: ', h('code', {}, '{{topic}}'), ' ', h('code', {}, '{{date}}'), ' ', h('code', {}, '{{objectives}}'), ' and so on. The tag names are: ', FIELDS.filter(x => x.id && x.id !== 'blank').map(x => x.id).join(', '), '.')) : null,
@@ -161,6 +162,48 @@ export function openFormatDownload({ formatId, lesson, weekStart } = {}) {
     } catch (e) { toast(e.message, 'error'); return null; } finally { done(); }
   };
   const m = modal('Download in the school format', body);
+  draw();
+  return m;
+}
+
+// ---------- The weekly planner, filled in live from the planner ----------
+export function openWeeklyPlanner(weekStart) {
+  if (!formats().length) {
+    const m = modal('Weekly planner', h('div', {}, h('p', {}, 'Upload your school’s weekly planner (Word or Excel) and it fills itself in from the planner as you plan. You see it here and download it whenever it has to be handed in.'), formatsSection(() => { m.close(); openWeeklyPlanner(weekStart); })), { wide: true });
+    return m;
+  }
+  let mon = weekStart, key = '*', fid = weeklyFormat().id, seq = 0;
+  const opts = state.subjects.flatMap(s => classesOf(s).map(cls => ({ s, cls, key: s.id + '|' + cls })));
+  const pv = h('div', { class: 'school-pv', 'aria-live': 'polite' });
+  const bar = h('div', { class: 'row wrap school-pv-bar' });
+  const info = h('p', { class: 'muted small' });
+  let blob = null;
+  const draw = async () => {
+    const f = formats().find(x => x.id === fid) || weeklyFormat(); fid = f.id;
+    const ls = lessonsIn(mon, addDays(mon, 6), key);
+    bar.replaceChildren(
+      h('button', { class: 'icon-btn', 'aria-label': 'Previous week', onclick: () => { mon = addDays(mon, -7); draw(); } }, icon('left')),
+      h('strong', {}, `${fmt(mon)} – ${fmt(addDays(mon, 4), { day: 'numeric', month: 'short', year: 'numeric' })}`),
+      h('button', { class: 'icon-btn', 'aria-label': 'Next week', onclick: () => { mon = addDays(mon, 7); draw(); } }, icon('right')),
+      formats().length > 1 ? h('select', { class: 'sm', 'aria-label': 'Form', onchange: async e => { fid = e.target.value; await saveSettings({ weeklyFormat: fid }); draw(); } }, ...formats().map(x => h('option', { value: x.id, selected: x.id === fid }, x.name))) : h('span', { class: 'muted small' }, f.name),
+      h('select', { class: 'sm', 'aria-label': 'Class', onchange: e => { key = e.target.value; draw(); } }, h('option', { value: '*', selected: key === '*' }, 'All my classes'), ...opts.map(o => h('option', { value: o.key, selected: o.key === key }, classLabel(o.s, o.cls)))),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'btn ghost sm', onclick: () => openFormatSetup(f, false, draw) }, 'Check the blanks'),
+      h('button', { class: 'btn ghost sm', disabled: !ls.length, onclick: () => blob && shareFile({ blob, name: fileName(f) }, f.name) }, icon('paper', 16), 'Share'),
+      h('button', { class: 'btn sm', disabled: !ls.length, onclick: () => { if (blob) { download(blob, fileName(f)); toast(blob.note || `Downloaded. Open it in ${app(f)} to check before you send it.`, blob.note ? 'warn' : 'ok'); } } }, icon('download', 16), `Download (${app(f)})`));
+    const unprepared = ls.filter(l => !l.content).length;
+    info.textContent = ls.length ? `Filled in from ${ls.length} lesson${ls.length === 1 ? '' : 's'} on the planner. It updates as you plan.` + (f.kind === 'lesson' ? ' (This form is set up as a single lesson plan, so each lesson gets its own page.)' : '') + (unprepared && f.kind === 'lesson' ? ` ${unprepared} not prepared yet.` : '') : 'Nothing planned this week yet. As you plan lessons, they appear in the form here.';
+    const my = ++seq;
+    try {
+      blob = await fillFormat(f, ls, { weekStart: mon });
+      const html = await previewHtml(blob);
+      if (my !== seq) return;
+      pv.innerHTML = html;
+    } catch (e) { pv.textContent = e.message; }
+  };
+  const fileName = f => safeName(`${f.name} – ${key === '*' ? '' : classLabel(subjectById(key.split('|')[0]), key.split('|')[1]) + ' '}${fmt(mon)}–${fmt(addDays(mon, 4))}`) + ext(f);
+  const off = onChange(w => { if (['lessons', 'atp', 'subjects', 'timetable', 'settings'].includes(w)) draw(); });
+  const m = modal('Weekly planner', h('div', { class: 'school-pv-wrap' }, bar, info, pv), { wide: true, onClose: off });
   draw();
   return m;
 }

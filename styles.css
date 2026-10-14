@@ -1199,6 +1199,16 @@ dialog #toast { position: fixed; }
 .callout p:last-child { margin-bottom: 0; }
 .format-dl { display: grid; gap: .8rem; }
 
+.school-pv-bar { gap: .5rem; align-items: center; margin-bottom: .25rem; }
+.school-pv-bar select.sm { max-width: 14rem; }
+.school-pv { background: #fff; color: #1D2522; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 1rem 1.2rem; max-height: 70vh; overflow: auto; font: .82rem/1.35 Arial, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.school-pv table { border-collapse: collapse; width: 100%; margin: .4rem 0 .8rem; }
+.school-pv td { border: 1px solid #9AA59F; padding: 4px 6px; vertical-align: top; min-width: 3.5rem; }
+.school-pv tr:first-child td { font-weight: 700; background: #F1F4F2; }
+.school-pv p { margin: .25rem 0; }
+.school-pv h4 { margin: .2rem 0 .5rem; font-size: 1.05rem; }
+.school-pv hr.pv-page { border: 0; border-top: 2px dashed #B7C4BD; margin: 1.2rem 0; }
+
 /* ---------- Look picker (Settings) ---------- */
 .look-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: .75rem; margin: .4rem 0 1rem; }
 .look-card { display: grid; gap: .3rem; justify-items: start; text-align: left; padding: .6rem .6rem .75rem; border: 2px solid var(--line); border-radius: var(--radius-m); background: var(--sheet); color: var(--ink); cursor: pointer; font: inherit; }

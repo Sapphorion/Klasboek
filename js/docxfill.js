@@ -426,12 +426,12 @@ function docxWriter(doc) {
     },
   };
 }
-async function fillDocx(format, files, sorted) {
+async function fillDocx(format, files, sorted, weekVal = () => '') {
   const xml = new TextDecoder().decode(files.get('word/document.xml'));
   let out, note = '';
   if (format.kind === 'table') {
     out = parseXml(xml); const w = docxWriter(out);
-    fillAll(w, format, sorted, f => joinValues(sorted, f)); note = w.note || '';
+    fillAll(w, format, sorted, f => joinValues(sorted, f) || weekVal(f)); note = w.note || '';
   } else {
     const docs = sorted.map(l => { const d = parseXml(xml); const v = valuesFor(l); fillAll(docxWriter(d), format, [l], f => v[f] ?? ''); return d; });
     out = docs[0] || parseXml(xml);
@@ -548,7 +548,7 @@ function xlsxWriter(sheetDocs, ss, styles) {
     tags(fn) { for (const d of sheetDocs) for (const cel of [...d.getElementsByTagNameNS(S, 'c')]) { if (cel.getElementsByTagNameNS(S, 'f').length) continue; const x = textAt(cel); if (/\{\{/.test(x)) write(cel, fn(x)); } },
   };
 }
-async function fillXlsx(format, files, sorted) {
+async function fillXlsx(format, files, sorted, weekVal = () => '') {
   const { wb, rels, sheets, ss } = xlsxParts(files);
   const styles = files.has('xl/styles.xml') ? parseXml(dec(files.get('xl/styles.xml')), 'Excel') : null;
   const src = sheets.map(s => dec(files.get(s.path)));
@@ -557,7 +557,7 @@ async function fillXlsx(format, files, sorted) {
   if (format.kind === 'table' || sorted.length <= 1) {
     const docs = src.map(x => parseXml(x, 'Excel'));
     const w = xlsxWriter(docs, ss, styles);
-    if (format.kind === 'table') fillAll(w, format, sorted, f => joinValues(sorted, f));
+    if (format.kind === 'table') fillAll(w, format, sorted, f => joinValues(sorted, f) || weekVal(f));
     else { const v = sorted[0] ? valuesFor(sorted[0]) : {}; fillAll(w, format, sorted.slice(0, 1), f => v[f] ?? ''); }
     note = w.note || '';
     docs.forEach((d, i) => files.set(sheets[i].path, ser(d)));
@@ -608,10 +608,13 @@ const sheetName = (l, i, base) => {
 
 // ---------- Fill a saved format ----------
 // Lesson-plan forms: one page (Word) or sheet (Excel) per lesson. Planning tables and week grids: one document.
-export async function fillFormat(format, lessons) {
+export async function fillFormat(format, lessons, { weekStart } = {}) {
   const files = await readZip(b64bytes(format.file));
   const sorted = lessons.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.periodId || '').localeCompare(b.periodId || ''));
-  return format.type === 'xlsx' ? fillXlsx(format, files, sorted) : fillDocx(format, files, sorted);
+  const wk = weekStart || (sorted[0]?.date ? mondayOf(sorted[0].date) : '');
+  const base = wk ? valuesFor({ date: wk }) : { teacher: state.settings.teacherName || '', school: state.settings.school || '' };
+  const weekVal = f => ['teacher', 'school', 'term', 'week', 'weekRange'].includes(f) ? base[f] || '' : '';
+  return format.type === 'xlsx' ? fillXlsx(format, files, sorted, weekVal) : fillDocx(format, files, sorted, weekVal);
 }
 
 export const b64bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -632,3 +635,39 @@ export async function readFormatFile(file) {
 }
 const withKind = r => ({ ...r, kind: r.tables.some(t => t.many) ? 'table' : 'lesson' });
 export const analyse = xml => withKind(analyseDocx(xml));
+
+// ---------- Show a filled form on screen ----------
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const br = t => esc(t).replace(/\n/g, '<br>');
+// A simple HTML picture of a filled Word or Excel form, so the planner can show it live.
+export async function previewHtml(blob) {
+  const files = await readZip(new Uint8Array(await blob.arrayBuffer()));
+  if (files.has('word/document.xml')) {
+    const doc = parseXml(dec(files.get('word/document.xml')));
+    const para = p => { const t = textOf(p) ? [...p.childNodes].filter(n => n.nodeType === 1).map(n => n.localName === 'r' || n.localName === 'hyperlink' ? [...n.getElementsByTagNameNS(W, '*')].map(x => x.localName === 't' ? x.textContent : x.localName === 'br' && x.getAttribute('w:type') !== 'page' ? '\n' : x.localName === 'tab' ? '\t' : '').join('') : '').join('') : '';
+      const bold = p.getElementsByTagNameNS(W, 'b').length && t.length < 80; const head = /Heading|Title/i.test(p.getElementsByTagNameNS(W, 'pStyle')[0]?.getAttribute('w:val') || '');
+      if ([...p.getElementsByTagNameNS(W, 'br')].some(b => b.getAttribute('w:type') === 'page')) return '<hr class="pv-page">';
+      return t.trim() ? (head ? `<h4>${br(t)}</h4>` : `<p>${bold ? `<b>${br(t)}</b>` : br(t)}</p>`) : ''; };
+    const table = tbl => '<table>' + rowsOf(tbl).map(tr => '<tr>' + cellsOf(tr).map(tc => {
+      const vm = tc.getElementsByTagNameNS(W, 'vMerge')[0]; if (vm && vm.getAttribute('w:val') !== 'restart') return '';
+      const span = +(tc.getElementsByTagNameNS(W, 'gridSpan')[0]?.getAttribute('w:val') || 1);
+      return `<td${span > 1 ? ` colspan="${span}"` : ''}>${kids(tc, 'p').map(p => br(textOf(p) && [...p.getElementsByTagNameNS(W, '*')].map(x => x.localName === 't' ? x.textContent : x.localName === 'br' ? '\n' : '').join(''))).filter(Boolean).join('<br>')}</td>`;
+    }).join('') + '</tr>').join('') + '</table>';
+    return [...bodyOf(doc).childNodes].filter(n => n.nodeType === 1).map(n => n.localName === 'p' ? para(n) : n.localName === 'tbl' ? table(n) : '').join('');
+  }
+  const { sheets, ss } = xlsxParts(files);
+  return sheets.map(s => {
+    const doc = parseXml(dec(files.get(s.path)), 'Excel');
+    const grid = sheetGrid(doc, ss);
+    const spans = {};
+    for (const m of doc.getElementsByTagNameNS(S, 'mergeCell')) { const [a, b] = (m.getAttribute('ref') || '').split(':').map(refRC); if (a && b) spans[a.join(',')] = [b[0] - a[0] + 1, b[1] - a[1] + 1]; }
+    let lastRow = grid.length; while (lastRow > 0 && grid[lastRow - 1].every(x => x === '' || x === null)) lastRow--;
+    let lastCol = 0; grid.slice(0, lastRow).forEach(r => r.forEach((x, c) => { if (x) lastCol = Math.max(lastCol, c + 1); }));
+    const rows = grid.slice(0, lastRow).map((row, r) => '<tr>' + row.slice(0, lastCol).map((x, c) => {
+      if (x === null) return '';
+      const sp = spans[r + ',' + c];
+      return `<td${sp && sp[0] > 1 ? ` rowspan="${sp[0]}"` : ''}${sp && sp[1] > 1 ? ` colspan="${Math.min(sp[1], lastCol - c)}"` : ''}>${x === '\u0001' ? '<i>formula</i>' : br(x)}</td>`;
+    }).join('') + '</tr>').join('');
+    return (sheets.length > 1 ? `<h4>${esc(s.name)}</h4>` : '') + `<table>${rows}</table>`;
+  }).join('<hr class="pv-page">');
+}
