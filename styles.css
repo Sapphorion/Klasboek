@@ -1175,6 +1175,10 @@ dialog #toast { position: fixed; }
 }
 
 
+.area-tabs { margin-bottom: .75rem; }
+.area-tabs button { padding: .45rem 1rem; font-size: .95rem; font-weight: 700; }
+.area-tabs b { font-weight: 400; opacity: .7; margin-left: .2rem; }
+
 /* ---------- Look picker (Settings) ---------- */
 .look-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: .75rem; margin: .4rem 0 1rem; }
 .look-card { display: grid; gap: .3rem; justify-items: start; text-align: left; padding: .6rem .6rem .75rem; border: 2px solid var(--line); border-radius: var(--radius-m); background: var(--sheet); color: var(--ink); cursor: pointer; font: inherit; }

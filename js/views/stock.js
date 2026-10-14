@@ -5,6 +5,17 @@ import { h, icon, toast, confirmBox, modal, download, loadScript, busy, dropZone
 import { today, fmt, parse } from '../dates.js';
 import { openPrint } from '../exporters.js';
 
+export const AREAS = ['Physics', 'Chemistry', 'Biology', 'General'];
+const PHYSICS = /ammeter|voltmeter|multimeter|galvanometer|resistor|rheostat|cell|batter|power supply|wire|crocodile|switch|bulb|lamp holder|magnet|compass|coil|solenoid|spring|newton ?meter|spring balance|trolley|ticker|runway|pulley|lens|mirror|prism|ray box|laser|glass block|tuning fork|slinky|oscilloscope|signal generator|stopwatch|meter ?rule|metre ?rule|vernier|micrometer|pendulum|light gate|ripple tank|electroscope|van de graaff|ohm|capacitor|diode|led\b|motor|generator|transformer|inclined plane|ball bearing/i;
+// Physics, Chemistry, Biology or General: set by hand, or guessed from the category and name.
+export function areaOf(it) {
+  if (AREAS.includes(it.area)) return it.area;
+  if (it.category === 'Biological') return 'Biology';
+  if (PHYSICS.test(it.name || '')) return 'Physics';
+  if (it.category === 'Chemicals' || it.category === 'Glassware') return 'Chemistry';
+  return 'General';
+}
+
 export const CATEGORIES = ['Chemicals', 'Glassware', 'Equipment', 'Consumables', 'Biological', 'Safety', 'Other'];
 export const HAZARDS = [
   { id: '', label: 'None' }, { id: 'flammable', label: 'Flammable' }, { id: 'corrosive', label: 'Corrosive' },
@@ -35,7 +46,7 @@ export function stockAlerts() {
   };
 }
 
-let filter = 'all', cat = '', query = '', sortBy = 'name', rootEl = null;
+let filter = 'all', area = '', cat = '', query = '', sortBy = 'name', rootEl = null;
 
 export function renderStock(root) {
   rootEl = root;
@@ -53,13 +64,14 @@ function rerender() {
 
 function shown() {
   const q = query.trim().toLowerCase();
-  let list = state.stock.filter(it => (!cat || it.category === cat)
+  let list = state.stock.filter(it => (!area || areaOf(it) === area) && (!cat || it.category === cat)
     && (!q || [it.name, it.location, it.supplier, it.notes, it.formula].some(x => (x || '').toLowerCase().includes(q))));
   if (filter !== 'all') list = list.filter(it => { const s = stockStatus(it); return filter === 'low' ? s.includes('low') || s.includes('out') : filter === 'expiring' ? s.includes('soon') || s.includes('expired') : filter === 'hazard' ? !!it.hazard : true; });
   const by = {
     name: (a, b) => a.name.localeCompare(b.name),
     expiry: (a, b) => (a.expiry || '9999').localeCompare(b.expiry || '9999'),
     location: (a, b) => (a.location || '~').localeCompare(b.location || '~') || a.name.localeCompare(b.name),
+    area: (a, b) => AREAS.indexOf(areaOf(a)) - AREAS.indexOf(areaOf(b)) || a.name.localeCompare(b.name),
     category: (a, b) => (a.category || '~').localeCompare(b.category || '~') || a.name.localeCompare(b.name),
   }[sortBy];
   return list.sort(by);
@@ -86,19 +98,24 @@ function view() {
     return page;
   }
 
+  const inArea = it => !area || areaOf(it) === area;
+  const counts = Object.fromEntries(AREAS.map(a => [a, state.stock.filter(it => areaOf(it) === a).length]));
+  page.append(h('div', { class: 'seg area-tabs', role: 'tablist', 'aria-label': 'Physics or Chemistry' },
+    h('button', { role: 'tab', 'aria-selected': String(!area), onclick: () => { area = ''; rerender(); } }, 'All ', h('b', {}, state.stock.length)),
+    ...AREAS.filter(a => a === 'Physics' || a === 'Chemistry' || counts[a]).map(a => h('button', { role: 'tab', 'aria-selected': String(area === a), onclick: () => { area = a; rerender(); } }, a + ' ', h('b', {}, counts[a])))));
   const chip = (id, label, n, cls = '') => h('button', { class: 'chip ' + cls, 'aria-pressed': String(filter === id), onclick: () => { filter = filter === id && id !== 'all' ? 'all' : id; rerender(); } }, label, n != null ? h('b', {}, n) : null);
   page.append(h('div', { class: 'stock-chips row wrap' },
-    chip('all', 'Everything', state.stock.length),
-    chip('expiring', 'Expired or expiring', al.expired.length + al.soon.length, al.expired.length ? 'bad' : al.soon.length ? 'warn' : ''),
-    chip('low', 'Low or out', al.low.length, al.low.length ? 'warn' : ''),
-    chip('hazard', 'Hazardous', state.stock.filter(i => i.hazard).length)));
+    chip('all', 'Everything', state.stock.filter(inArea).length),
+    chip('expiring', 'Expired or expiring', al.expired.filter(inArea).length + al.soon.filter(inArea).length, al.expired.some(inArea) ? 'bad' : al.soon.some(inArea) ? 'warn' : ''),
+    chip('low', 'Low or out', al.low.filter(inArea).length, al.low.some(inArea) ? 'warn' : ''),
+    chip('hazard', 'Hazardous', state.stock.filter(i => i.hazard && inArea(i)).length)));
 
   page.append(h('div', { class: 'stock-tools row wrap' },
     h('input', { type: 'search', placeholder: 'Search name, place, supplier…', value: query, 'data-keep': 'q', 'aria-label': 'Search stock', oninput: e => { query = e.target.value; rerender(); } }),
     h('select', { 'aria-label': 'Category', onchange: e => { cat = e.target.value; rerender(); } },
       h('option', { value: '' }, 'All categories'), ...CATEGORIES.map(c => h('option', { value: c, selected: c === cat }, c))),
     h('select', { 'aria-label': 'Sort by', onchange: e => { sortBy = e.target.value; rerender(); } },
-      ...[['name', 'Sort: name'], ['expiry', 'Sort: expiry date'], ['location', 'Sort: where it is kept'], ['category', 'Sort: category']].map(([v, l]) => h('option', { value: v, selected: v === sortBy }, l)))));
+      ...[['name', 'Sort: name'], ['expiry', 'Sort: expiry date'], ['location', 'Sort: where it is kept'], ['area', 'Sort: Physics / Chemistry'], ['category', 'Sort: category']].map(([v, l]) => h('option', { value: v, selected: v === sortBy }, l)))));
 
   const list = shown();
   if (!list.length) { page.append(h('p', { class: 'muted' }, 'Nothing matches.')); return page; }
@@ -125,7 +142,7 @@ function row(it) {
   return h('tr', { class: s.map(x => 'is-' + x).join(' ') },
     h('td', { class: 'st-name' },
       h('button', { class: 'link', onclick: () => editItem(it) }, it.name),
-      h('span', { class: 'muted small' }, [it.category, it.formula, it.concentration].filter(Boolean).join(' · ')),
+      h('span', { class: 'muted small' }, [area ? '' : areaOf(it), it.category, it.formula, it.concentration].filter(Boolean).join(' · ')),
       it.hazard ? h('span', { class: 'haz', title: 'Hazard' }, '⚠ ' + hazardLabel(it.hazard)) : null),
     h('td', { class: 'st-qty' },
       h('div', { class: 'qty-step' },
@@ -141,13 +158,14 @@ function row(it) {
 
 // ---------- Add / edit ----------
 export function editItem(orig) {
-  const it = orig ? structuredClone(orig) : { name: '', category: 'Chemicals', qty: '', unit: 'g', min: '', location: '', purchased: today(), expiry: '', opened: '', supplier: '', cost: '', hazard: '', formula: '', concentration: '', notes: '' };
+  const it = orig ? structuredClone(orig) : { name: '', area: area || 'Chemistry', category: area === 'Physics' ? 'Equipment' : 'Chemicals', qty: '', unit: 'g', min: '', location: '', purchased: today(), expiry: '', opened: '', supplier: '', cost: '', hazard: '', formula: '', concentration: '', notes: '' };
   const f = (label, input, hint, wide) => h('label', { class: 'field' + (wide ? ' span2' : '') }, h('span', { class: 'lbl' }, label), input, hint ? h('span', { class: 'hint' }, hint) : null);
   const inp = (k, attrs = {}) => h('input', { value: it[k] ?? '', ...attrs, oninput: e => { it[k] = e.target.value; } });
   const sel = (k, opts) => h('select', { onchange: e => { it[k] = e.target.value; } }, ...opts.map(o => typeof o === 'string' ? h('option', { value: o, selected: (it[k] || '') === o }, o || '–') : h('option', { value: o.id, selected: (it[k] || '') === o.id }, o.label)));
   const body = h('div', {},
     h('div', { class: 'form-grid' },
       f('Item', inp('name', { placeholder: 'e.g. Copper(II) sulfate, 250 mL beaker', required: true }), null, true),
+      f('Physics or Chemistry', h('select', { onchange: e => { it.area = e.target.value; } }, ...AREAS.map(a => h('option', { value: a, selected: areaOf(it) === a }, a)))),
       f('Category', sel('category', CATEGORIES)),
       f('Hazard', sel('hazard', HAZARDS)),
       f('Formula', inp('formula', { placeholder: 'e.g. CuSO₄·5H₂O' }), 'Optional, for chemicals.'),
@@ -191,16 +209,16 @@ async function addStarter() {
     ['Methylated spirits', 'Chemicals', 'L', 'flammable', ''], ['Limewater', 'Chemicals', 'mL', 'irritant', 'Ca(OH)₂'],
     ['Beaker 250 mL', 'Glassware', 'items', '', ''], ['Test tubes', 'Glassware', 'items', '', ''], ['Measuring cylinder 100 mL', 'Glassware', 'items', '', ''],
     ['Bunsen burner', 'Equipment', 'items', '', ''], ['Thermometer', 'Equipment', 'items', '', ''], ['Electronic balance', 'Equipment', 'items', '', ''],
-    ['Ammeter', 'Equipment', 'items', '', ''], ['Voltmeter', 'Equipment', 'items', '', ''], ['Connecting wires', 'Equipment', 'sets', '', ''], ['Cells (1.5 V)', 'Consumables', 'items', '', ''],
+    ['Ammeter', 'Equipment', 'items', '', ''], ['Resistors (assorted)', 'Equipment', 'packs', '', ''], ['Ray box', 'Equipment', 'items', '', ''], ['Bar magnets', 'Equipment', 'pairs', '', ''], ['Spring balance (newton meter)', 'Equipment', 'items', '', ''], ['Voltmeter', 'Equipment', 'items', '', ''], ['Connecting wires', 'Equipment', 'sets', '', ''], ['Cells (1.5 V)', 'Consumables', 'items', '', ''],
     ['Filter paper', 'Consumables', 'packs', '', ''], ['Safety goggles', 'Safety', 'pairs', '', ''], ['Disposable gloves', 'Safety', 'boxes', '', ''],
   ];
-  for (const [name, category, unit, hazard, formula] of starter) await saveStock({ name, category, unit, hazard, formula, qty: '', min: '', location: '', purchased: '', expiry: '', supplier: '', cost: '', notes: '' }, { silent: true });
+  for (const [name, category, unit, hazard, formula] of starter) await saveStock({ name, category, unit, hazard, formula, area: areaOf({ name, category }), qty: '', min: '', location: '', purchased: '', expiry: '', supplier: '', cost: '', notes: '' }, { silent: true });
   rerender(); toast('Added a starter list. Fill in what you have and delete what you don’t use.');
 }
 
 // ---------- Import ----------
 const COLS = {
-  name: /^(item|name|description|chemical|equipment|apparatus)/i, category: /^(category|type|kind)/i, qty: /^(qty|quantity|on ?hand|amount|stock|count)/i,
+  area: /^(area|section|subject|physics ?\/ ?chemistry|discipline)/i, name: /^(item|name|description|chemical|equipment|apparatus)/i, category: /^(category|type|kind)/i, qty: /^(qty|quantity|on ?hand|amount|stock|count)/i,
   unit: /^(unit|units|uom)/i, min: /^(min|minimum|reorder)/i, location: /^(location|kept|store|storage|shelf|cupboard|room)/i,
   purchased: /^(date )?(purchased|bought|received|date)$/i, expiry: /^(expiry|expires|exp|best before|use by)/i, supplier: /^(supplier|vendor|bought from)/i,
   cost: /^(cost|price|amount paid)/i, hazard: /^(hazard|danger|ghs)/i, formula: /^(formula)/i, notes: /^(notes|comment|remarks)/i, opened: /^(opened)/i,
@@ -230,7 +248,9 @@ export function rowsToStock(rows) {
     const qm = String(qty ?? '').match(/^\s*([\d.,]+)\s*([a-zA-Z]+)?/); if (qm) { qty = num(qm[1]); if (!unit && qm[2]) unit = qm[2]; }
     const hz = String(g('hazard') || '').toLowerCase();
     const cg = String(g('category') || '').trim();
-    return { name, category: CATEGORIES.find(c => c.toLowerCase() === cg.toLowerCase()) || (cg ? 'Other' : 'Chemicals'), qty: qty ?? '', unit, min: num(g('min')) ?? '',
+    const ar = String(g('area') || '').toLowerCase();
+    const areaGuess = /phys/.test(ar) ? 'Physics' : /chem/.test(ar) ? 'Chemistry' : /bio|life/.test(ar) ? 'Biology' : /gen/.test(ar) ? 'General' : '';
+    return { name, area: areaGuess, category: CATEGORIES.find(c => c.toLowerCase() === cg.toLowerCase()) || (cg ? 'Other' : 'Chemicals'), qty: qty ?? '', unit, min: num(g('min')) ?? '',
       location: String(g('location') || '').trim(), purchased: toIso(g('purchased')), expiry: toIso(g('expiry')), opened: toIso(g('opened')), supplier: String(g('supplier') || '').trim(),
       cost: num(String(g('cost') || '').replace(/[R\s]/g, '')) ?? '', hazard: HAZARDS.find(x => x.id && hz.includes(x.id.slice(0, 5)))?.id || '', formula: String(g('formula') || '').trim(), notes: String(g('notes') || '').trim() };
   }).filter(Boolean);
@@ -257,17 +277,21 @@ function openImport() {
 }
 
 // ---------- Export ----------
-const HEAD = ['Item', 'Category', 'Formula', 'Concentration / size', 'On hand', 'Unit', 'Reorder at', 'Kept in', 'Date bought', 'Expiry', 'Opened', 'Supplier', 'Cost (R)', 'Hazard', 'Status', 'Notes'];
+const HEAD = ['Item', 'Physics / Chemistry', 'Category', 'Formula', 'Concentration / size', 'On hand', 'Unit', 'Reorder at', 'Kept in', 'Date bought', 'Expiry', 'Opened', 'Supplier', 'Cost (R)', 'Hazard', 'Status', 'Notes'];
 const statusText = it => stockStatus(it).map(s => ({ expired: 'Expired', soon: 'Expires soon', out: 'Out of stock', low: 'Low' }[s])).join(', ');
-const asRow = it => [it.name, it.category, it.formula || '', it.concentration || '', num(it.qty) ?? '', it.unit || '', num(it.min) ?? '', it.location || '', it.purchased || '', it.expiry || '', it.opened || '', it.supplier || '', num(it.cost) ?? '', hazardLabel(it.hazard), statusText(it), it.notes || ''];
+const asRow = it => [it.name, areaOf(it), it.category, it.formula || '', it.concentration || '', num(it.qty) ?? '', it.unit || '', num(it.min) ?? '', it.location || '', it.purchased || '', it.expiry || '', it.opened || '', it.supplier || '', num(it.cost) ?? '', hazardLabel(it.hazard), statusText(it), it.notes || ''];
 async function exportXlsx(btn) {
   const done = busy(btn, 'Building…');
   try {
     await loadScript('vendor/xlsx.full.min.js');
     const X = window.XLSX;
-    const ws = X.utils.aoa_to_sheet([HEAD, ...state.stock.slice().sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)).map(asRow)]);
-    ws['!cols'] = HEAD.map((t, i) => ({ wch: [28, 12, 14, 16, 9, 7, 9, 22, 11, 11, 11, 18, 9, 16, 14, 30][i] }));
-    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Stock');
+    const COLS = HEAD.map((t, i) => ({ wch: [28, 12, 12, 14, 16, 9, 7, 9, 22, 11, 11, 11, 18, 9, 16, 14, 30][i] }));
+    const sheet = rows => { const ws = X.utils.aoa_to_sheet([HEAD, ...rows.map(asRow)]); ws['!cols'] = COLS; return ws; };
+    const byCat = (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+    const wb = X.utils.book_new();
+    // One sheet per section (Physics, Chemistry…), then everything together.
+    for (const a of AREAS) { const rows = state.stock.filter(it => areaOf(it) === a).sort(byCat); if (rows.length) X.utils.book_append_sheet(wb, sheet(rows), a); }
+    X.utils.book_append_sheet(wb, sheet(state.stock.slice().sort((a, b) => AREAS.indexOf(areaOf(a)) - AREAS.indexOf(areaOf(b)) || byCat(a, b))), 'All stock');
     const al = stockAlerts();
     const re = [...al.expired, ...al.soon, ...al.low.filter(x => !al.expired.includes(x) && !al.soon.includes(x))];
     if (re.length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([HEAD, ...re.map(asRow)]), 'Needs attention');
@@ -278,9 +302,12 @@ async function exportXlsx(btn) {
 function printSheet() {
   const s = state.settings;
   const esc = t => String(t ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const groups = CATEGORIES.map(c => [c, state.stock.filter(x => x.category === c).sort((a, b) => a.name.localeCompare(b.name))]).filter(([, l]) => l.length);
-  const body = `<h1>Lab stock sheet</h1><p class="meta">${esc(s.school || '')}${s.teacherName ? ' · ' + esc(s.teacherName) : ''} · ${fmt(today(), { day: 'numeric', month: 'long', year: 'numeric' })}</p>` +
-    groups.map(([c, l]) => `<h2>${esc(c)}</h2><table><thead><tr><th>Item</th><th>On hand</th><th>Counted</th><th>Kept in</th><th>Bought</th><th>Expires</th><th>Hazard</th></tr></thead><tbody>${
-      l.map(it => `<tr${stockStatus(it).includes('expired') ? ' style="color:#b00"' : ''}><td>${esc(it.name)}${it.formula ? ` <small>(${esc(it.formula)})</small>` : ''}</td><td>${esc(fmtQty(it))}</td><td style="min-width:5em"></td><td>${esc(it.location)}</td><td>${it.purchased || ''}</td><td>${it.expiry || ''}</td><td>${esc(hazardLabel(it.hazard))}</td></tr>`).join('')}</tbody></table>`).join('');
-  openPrint(body, 'Lab stock sheet');
+  // Prints the section that's open (Physics, Chemistry…) or all of them, each section starting on a new page.
+  const secs = (area ? [area] : AREAS).map(a => [a, CATEGORIES.map(c => [c, state.stock.filter(x => areaOf(x) === a && x.category === c).sort((p, q) => p.name.localeCompare(q.name))]).filter(([, l]) => l.length)]).filter(([, g]) => g.length);
+  const table = (c, l) => `<h3>${esc(c)}</h3><table><thead><tr><th>Item</th><th>On hand</th><th>Counted</th><th>Kept in</th><th>Bought</th><th>Expires</th><th>Hazard</th></tr></thead><tbody>${
+      l.map(it => `<tr${stockStatus(it).includes('expired') ? ' style="color:#b00"' : ''}><td>${esc(it.name)}${it.formula ? ` <small>(${esc(it.formula)})</small>` : ''}</td><td>${esc(fmtQty(it))}</td><td style="min-width:5em"></td><td>${esc(it.location)}</td><td>${it.purchased || ''}</td><td>${it.expiry || ''}</td><td>${esc(hazardLabel(it.hazard))}</td></tr>`).join('')}</tbody></table>`;
+  const head = `<p class="meta">${esc(s.school || '')}${s.teacherName ? ' · ' + esc(s.teacherName) : ''} · ${fmt(today(), { day: 'numeric', month: 'long', year: 'numeric' })}</p>`;
+  const body = secs.map(([a, g], i) => `<section${i ? ' style="page-break-before:always"' : ''}><h1>${esc(a)} stock sheet</h1>${head}${g.map(([c, l]) => table(c, l)).join('')}</section>`).join('');
+  if (!body) { toast('Nothing to print in this section.', 'warn'); return; }
+  openPrint(body, area ? `${area} stock sheet` : 'Lab stock sheet');
 }
