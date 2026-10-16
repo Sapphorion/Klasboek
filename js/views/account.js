@@ -22,12 +22,15 @@ export function accountSection() {
       sec.replaceChildren(...kids);
       return;
     }
-    if (!ghConnected() && !signedIn()) {
+    const other = ghConnected() || signedIn();
+    {
       kids.push(
-        h('p', {}, 'Sign in so your work is saved to your account and is there on your PC, phone and tablet. Without signing in, Klasboek keeps everything on this device only.'),
+        other ? h('p', { class: 'small' }, 'You can also sign in with Google instead: your work is then saved to your Google account (and stops syncing through GitHub on this device).')
+          : h('p', {}, 'Sign in so your work is saved to your account and is there on your PC, phone and tablet. Without signing in, Klasboek keeps everything on this device only.'),
         h('div', { class: 'row wrap' }, h('button', { class: 'btn g-btn', disabled: !fbConfigured() || !navigator.onLine, onclick: async e => { const b = e.currentTarget; b.disabled = true; try { await signInFlow(); } catch (err) { toast(err.message, 'error'); } finally { b.disabled = false; draw(); } } }, gLogo(), 'Sign in with Google')),
         fbConfigured() ? null : h('p', { class: 'muted small' }, 'Google sign-in still needs to be switched on for this copy of Klasboek (once, by whoever looks after it).'),
         fbSetup(!fbConfigured()));
+      if (other) kids.push(h('h3', { class: 'acct-sub' }, 'Syncing now'));
     }
     if (ghConnected()) {
       const g = ghInfo();
@@ -155,8 +158,8 @@ const gLogo = () => { const s = document.createElementNS('http://www.w3.org/2000
 // One-time setup of Google sign-in for this copy of Klasboek.
 function fbSetup(open) {
   const ta = h('textarea', { rows: 6, placeholder: 'const firebaseConfig = {\n  apiKey: "…",\n  authDomain: "….firebaseapp.com",\n  projectId: "…",\n  appId: "…"\n};', 'aria-label': 'Firebase config' }, firebaseConfig() ? JSON.stringify(firebaseConfig(), null, 2) : '');
-  const site = location.host || 'sapphorion.github.io';
-  return h('details', { class: 'ext-steps', open: false },
+  const site = location.hostname || 'sapphorion.github.io';
+  return h('details', { class: 'ext-steps', open },
     h('summary', {}, open ? 'Switch on Google sign-in (once, about 10 minutes)' : 'Google sign-in setup'),
     h('ol', {},
       h('li', {}, 'Go to ', h('a', { href: 'https://console.firebase.google.com', target: '_blank', rel: 'noopener' }, 'console.firebase.google.com'), ', sign in with Google and click ', h('strong', {}, 'Create a project'), '. Name it Klasboek. Google Analytics isn’t needed.'),
