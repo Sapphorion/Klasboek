@@ -5,11 +5,12 @@ import { state, onChange, emit, loadState } from './state.js';
 import { exportBackup, importBackup } from './db.js';
 import { graph, signedIn, needsSignIn, NeedSignIn } from './msauth.js';
 import { gh } from './github.js';
+import { fbProvider } from './fbauth.js';
 import { h, modal } from './ui.js';
 
 const FILE = '/me/drive/special/approot:/klasboek-sync.json';
 const LS = 'klasboek.sync';
-const ALL = ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary'];
+const ALL = ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary', 'stock', 'attendance'];
 
 // Microsoft (OneDrive app folder), for school/work accounts with Klasboek registered.
 const ms = {
@@ -19,11 +20,13 @@ const ms = {
   async download() { const it = await graph(FILE); const res = await fetch(it['@microsoft.graph.downloadUrl']); if (!res.ok) throw new Error('Couldn’t download your data from OneDrive.'); return res.blob(); },
   async upload(blob) { const it = await graph(FILE + ':/content', { method: 'PUT', body: blob, headers: { 'Content-Type': 'application/json' } }); return it.lastModifiedDateTime; },
 };
-export const provider = () => gh.ready() ? gh : ms.ready() ? ms : null;
+export const provider = () => fbProvider.ready() ? fbProvider : gh.ready() ? gh : ms.ready() ? ms : null;
 export const connected = () => !!provider();
 
 const meta = () => { try { return JSON.parse(localStorage.getItem(LS) || '{}'); } catch { return {}; } };
 const setMeta = p => { const m = { ...meta(), ...p }; localStorage.setItem(LS, JSON.stringify(m)); listeners.forEach(f => f(m)); return m; };
+export const syncOwner = () => meta().owner || '';
+export const setSyncOwner = (uid, email) => setMeta({ owner: uid, ownerEmail: email });
 export const resetSyncState = () => { localStorage.removeItem(LS); listeners.forEach(f => f({})); };
 const listeners = new Set();
 export const onSync = f => (listeners.add(f), () => listeners.delete(f));

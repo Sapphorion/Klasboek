@@ -1,9 +1,16 @@
-import { loadState, onChange, state } from './state.js';
+import { loadState, onChange, state, saveSettings } from './state.js';
 import { h, icon, toast } from './ui.js';
 import { renderPlanner } from './views/planner.js';
 import { renderToday } from './views/today.js';
 import { renderProgress } from './views/progress.js';
 import { renderStock } from './views/stock.js';
+import { renderAttendance } from './views/attendance.js';
+import { needsWelcome, openWelcome } from './views/welcome.js';
+import { isUni, applyEdition } from './edition.js';
+import { wasSignedIn, fbConfigured, initFirebase, fbUser, onAuth } from './fbauth.js';
+import { afterSignIn } from './signin.js';
+import { syncOwner } from './sync.js';
+import { emit } from './state.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderDiary } from './views/diary.js';
 import { renderCreate } from './views/create.js';
@@ -18,17 +25,18 @@ import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
 
 const ROUTES = [
-  { id: 'today', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
+  { id: 'today', only: 'school', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
   { id: 'planner', label: 'Planner', short: 'Planner', icon: 'calendar', render: renderPlanner },
   { id: 'calendar', label: 'School calendar', short: 'Calendar', icon: 'month', render: renderCalendar },
   { id: 'diary', label: 'Diary', short: 'Diary', icon: 'diary', render: renderDiary },
   { id: 'create', label: 'Create', short: 'Create', icon: 'pen', render: renderCreate },
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
-  { id: 'moderation', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
-  { id: 'stock', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock },
-  { id: 'progress', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
-  { id: 'materials', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
+  { id: 'moderation', only: 'school', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
+  { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock },
+  { id: 'progress', only: 'school', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
+  { id: 'materials', only: 'school', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
+  { id: 'attendance', label: 'Attendance', short: 'Attend', icon: 'people', render: renderAttendance, only: 'uni' },
   { id: 'settings', label: 'Settings', short: 'Settings', icon: 'gear', render: renderSettings },
 ];
 
@@ -37,7 +45,7 @@ let current = null, cleanup = null;
 
 function route() {
   const [id, ...rest] = (location.hash.slice(1) || state.settings.home || 'today').split('/');
-  const r = ROUTES.find(r => r.id === id) || ROUTES.find(r => r.id === 'planner');
+  const r = ROUTES.find(r => r.id === id && (!r.only || r.only === edition())) || ROUTES.find(r => r.id === 'planner');
   document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.id === r.id ? 'page' : 'false'));
   document.querySelectorAll('dialog.modal[open] > header .icon-btn').forEach(b => b.click()); // leaving the page closes pop-ups
   if (cleanup) { cleanup(); cleanup = null; }
@@ -45,14 +53,17 @@ function route() {
   current = r;
   cleanup = r.render(main, rest) || null;
   document.title = `${r.label} · Klasboek`;
+  if (isUni()) document.title = document.title.replace('School calendar', 'Academic calendar').replace('Subjects & ATPs', 'Modules');
 }
 
 setLook('theme', currentTheme()); // also sets the browser bar colour
 
+const edition = () => isUni() ? 'uni' : 'school';
 function buildNav() {
   const ul = document.getElementById('nav');
+  ul.replaceChildren();
   for (const r of ROUTES) {
-    if (r.hidden) continue;
+    if (r.hidden || (r.only && r.only !== edition())) continue;
     ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id, 'aria-label': r.label }, icon(r.icon, 20), h('span', { class: 'long' }, r.label), h('span', { class: 'short', 'aria-hidden': 'true' }, r.short))));
   }
 }
@@ -106,8 +117,21 @@ async function start() {
   if (!justSignedIn && await renewIfNeeded().catch(() => false)) return; // off to Microsoft for a moment
   // Re-render the current view when shared data changes elsewhere (e.g. a modal saved).
   onChange(what => { if (current?.live?.includes(what)) route(); });
+  applyEdition(); buildNav();
+  window.addEventListener('klasboek-edition', () => { applyEdition(); buildNav(); route(); });
+  window.addEventListener('storage', e => { if (e.key === 'rollcall.v1') emit('attendance'); }); // registers changed in Attendance
   route();
-  syncBadge(); onSync(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
+  // A link like …/Klasboek/?for=lecturer opens straight in the lecturer edition.
+  const forWho = new URLSearchParams(location.search).get('for') || '';
+  const preset = /^(uni|lecturer|university)$/i.test(forWho) ? 'uni' : /^(school|teacher)$/i.test(forWho) ? 'school' : '';
+  if (needsWelcome()) openWelcome(() => route(), { edition: preset });
+  else if (!state.settings.edition) saveSettings({ edition: 'school' });
+  // Signed in with Google before? Pick the session up again (needs internet the first time each visit).
+  if (wasSignedIn() && fbConfigured()) {
+    const go = () => initFirebase().then(() => { const u = fbUser(); if (!u) return; if (syncOwner() !== u.uid) afterSignIn(u); else window.dispatchEvent(new Event('klasboek-connected')); window.dispatchEvent(new Event('klasboek-sync')); }).catch(() => {});
+    navigator.onLine ? go() : window.addEventListener('online', go, { once: true });
+  }
+  syncBadge(); onSync(syncBadge); onAuth(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
   if (connected()) startSync(); else window.addEventListener('klasboek-connected', () => startSync());
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // When a new version takes over, reload once so the teacher sees it straight away.

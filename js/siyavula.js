@@ -1,3 +1,4 @@
+import { state } from './state.js';
 // Match a lesson's ATP topic to the Siyavula open textbook chapter for that subject and grade.
 import { SIYAVULA_BOOKS } from './siyavula-data.js';
 
@@ -25,6 +26,7 @@ const chapterOf = (book, path) => book.ch.find(c => c[2] === path);
 
 // Best chapter (and the sections that fit best) for a topic; null when nothing matches.
 export function siyavulaFor(subject, topic, details = '', chosenPath = '') {
+  if (state.settings?.edition === 'uni') return null; // school textbooks only
   const book = bookFor(subject);
   if (!book) return null;
   const pack = (c, score) => {

@@ -1,6 +1,7 @@
 // All calls to Claude live here, so a future paid version can route them through a
 // server (with accounts and billing) by changing only this file.
 import { state } from './state.js';
+import { isUni, uniPrompt, UNI_NOTE } from './edition.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 
@@ -85,6 +86,7 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
   if (reason) throw new Error(reason);
   // Newer models don't accept a forced tool_choice, so the tool is offered with "auto"
   // and the system prompt tells Claude to answer through it. One retry if it doesn't.
+  if (isUni()) { system = uniPrompt(system) + UNI_NOTE; content = typeof content === 'string' ? uniPrompt(content) : (content || []).map(p => p.type === 'text' ? { ...p, text: uniPrompt(p.text) } : p); }
   const sys = `${system}\n\nAlways answer by calling the ${tool.name} tool exactly once with the complete result. Do not write any other text.`;
   const messages = [{ role: 'user', content }];
   let shapeRetry = false;

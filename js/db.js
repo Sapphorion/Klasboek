@@ -72,6 +72,8 @@ export async function exportBackup() {
       out.data[s] = rows;
     }
   }
+  // The attendance registers (Roll Call) keep their own storage on the same site.
+  try { const rc = localStorage.getItem('rollcall.v1'); if (rc) out.data.rollcall = rc; } catch {}
   // Never put the API key in a backup file that may be shared.
   out.data.kv = out.data.kv.map(([k, v]) => k === 'settings' && v ? [k, { ...v, apiKey: '' }] : [k, v]);
   return new Blob([JSON.stringify(out)], { type: 'application/json' });
@@ -91,4 +93,12 @@ export async function importBackup(file) {
       await db.putMany(s, rows);
     }
   }
+  try { if (json.data.rollcall) localStorage.setItem('rollcall.v1', json.data.rollcall); else localStorage.removeItem('rollcall.v1'); } catch {}
+}
+// Remove everything from this device (signing out on a shared computer). Keeps this device's Claude key.
+export async function clearAll() {
+  const keepKey = (await db.get('kv', 'settings'))?.apiKey || '';
+  for (const s of STORES) await db.clear(s);
+  if (keepKey) await db.put('kv', { apiKey: keepKey }, 'settings');
+  try { localStorage.removeItem('rollcall.v1'); } catch {}
 }

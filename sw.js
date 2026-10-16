@@ -1,6 +1,6 @@
 // Offline support: every app file is cached on install, so Klasboek opens with no internet.
 // Bump VERSION whenever you change any file so teachers get the update.
-const VERSION = 'klasboek-v34';
+const VERSION = 'klasboek-v35';
 const FILES = [
   './',
   './fonts/atkinson-hyperlegible-latin-400-italic.woff2',
@@ -25,8 +25,10 @@ const FILES = [
   './js/dates.js',
   './js/db.js',
   './js/docxfill.js',
+  './js/edition.js',
   './js/events.js',
   './js/exporters.js',
+  './js/fbauth.js',
   './js/generate.js',
   './js/github.js',
   './js/ics.js',
@@ -34,6 +36,7 @@ const FILES = [
   './js/moderation-core.js',
   './js/moderation-export.js',
   './js/msauth.js',
+  './js/signin.js',
   './js/siyavula-data.js',
   './js/siyavula.js',
   './js/state.js',
@@ -42,6 +45,7 @@ const FILES = [
   './js/ttday.js',
   './js/ui.js',
   './js/views/account.js',
+  './js/views/attendance.js',
   './js/views/calendar.js',
   './js/views/checker.js',
   './js/views/create.js',
@@ -66,6 +70,7 @@ const FILES = [
   './js/views/timetable.js',
   './js/views/today.js',
   './js/views/ttchanges.js',
+  './js/views/welcome.js',
   './js/views/yearui.js',
   './js/years.js',
   './manifest.webmanifest',

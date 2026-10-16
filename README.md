@@ -4,6 +4,29 @@ A lesson-planning app for South African teachers. Upload your ATPs and timetable
 
 ## What it does
 
+- **Lecturer edition**: on first open choose *School teacher* or *University lecturer* (or share the link `…/Klasboek/?for=lecturer`). The lecturer edition shows Planner, Academic calendar, Diary, Create, Modules, Timetable, **Attendance** and Settings, uses university words on screen (modules, lectures, students, year of study, course outline) and asks the AI for university-level material. Switch any time in Settings › You and your school.
+- **Attendance** (lecturer edition): Roll Call inside Klasboek, in `attendance/`: student card barcode scanning, a rotating lecture QR for students without cards, registers from Excel/Word/PDF and records with check-in times. Its registers are included in backups and in your account.
+- **Sign in with Google** (Settings › Your account, or the welcome screen): your Klasboek is saved to your Google account (Firebase Firestore) and is the same on every device you sign in on. Signing in on a device that holds someone else's Klasboek asks before replacing it; signing out can also remove it from a shared computer. The Claude API key is never uploaded.
+
+### Switching on Google sign-in (once)
+
+1. [console.firebase.google.com](https://console.firebase.google.com) › Create a project (e.g. Klasboek).
+2. Build › Authentication › Get started › Google › Enable.
+3. Authentication › Settings › Authorised domains › add `sapphorion.github.io`.
+4. Build › Firestore Database › Create database (production mode, a nearby location).
+5. Firestore › Rules:
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+6. Project settings › Your apps › Web app › register, and copy the `firebaseConfig` into `FIREBASE_CONFIG` in `js/config.js` (or paste it in Settings › Your account on a device to try it first).
+
 - **School formats** (Settings, Planner → More, or *School format* in a lesson): upload the school's own Word (.docx) or Excel (.xlsx) planning form once. Weekly planners laid out as a grid of days and periods (either way round, breaks skipped; days can be weekdays or Day 1–10 cycle numbers, and with a WK1 form for Days 1–5 and a WK2 form for Days 6–10 the right one is picked for the week on screen; blanks like “TERM: ____ DATE: ____ TO ____” are filled with the term and the week's dates, signature lines left empty) get each lesson in its day-and-period box, with a choice of what goes in the box (class, topic, today's part, activities, homework…); the planner's **Weekly planner** button shows the school's form filled in live from the week on screen (it updates as you plan; change week, class or form there) with Download and Share. Klasboek finds the blanks next to labels (Topic, Date, Objectives, Resources, Introduction, Assessment, HOD signature…, English and Afrikaans), lines like “Topic: ______”, `{{tags}}`, and planning tables with a row per lesson or per weekday, and guesses what goes in each (change any). Download a lesson, a week or any dates for one class or all classes, filled in on the school's form: lesson-plan forms get one page per lesson, planning tables one row per lesson or day. Filling happens on the device (no AI needed).
 - **Layout and colours** (Settings, per device): colours Chalkboard (dark green menu), Light (white menu, soft colours) or Night (dark, low glare; documents stay on white paper), and the menu Automatic (names on big screens, icons on tablets, bottom bar on small screens), down the side with names, icons only, or across the top. A chosen menu applies on any screen 600 points wide or more; phones keep the bottom bar. Night-mode overrides for fixed colours in `styles.css` are generated between the `night:auto` markers by `python3 tools/nightgen.py` (run it after changing colours).
 - **Today** (opens first; change it in Settings → Planner): today's lessons with a tick to mark them taught and which still need preparing, this week's tests and events, your diary to-dos, moderation deadlines, lab stock warnings, and a bar per class showing how far it is through this term's ATP.
@@ -86,6 +109,9 @@ js/create/             Create: model.js (materials, numbering, templates), rende
 js/exporters.js        Word, PowerPoint, print
 js/moderation-*.js     sampling, stats, report
 js/years.js            school years: start a new year, switch between years
+js/fbauth.js, signin.js Google sign-in and saving to your account
+js/edition.js          school or lecturer edition: menu and wording
+attendance/            Roll Call (attendance), its own small app inside Klasboek
 js/views/              one file per screen (today, planner, calendar, diary, create, progress, stock, …)
 vendor/                pdf.js, mammoth, SheetJS, docx, PptxGenJS (open-source, bundled for offline use)
 fonts/                 Atkinson Hyperlegible, Bricolage Grotesque (SIL Open Font License)
