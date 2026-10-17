@@ -701,7 +701,7 @@ function eventsFromRows(rows, year, fallback) {
     if (!range) continue;
     carry = { range, col: dateCol };
 
-    const cell = i => { if (noteCols.has(i) || i === gradeCol) return ''; const v = i === dateCol ? rest : row[i]; return WEEKDAY_CELL.test(v.trim()) ? '' : cleanTitle(v); };
+    const cell = i => { if (noteCols.has(i) || i === gradeCol) return ''; const v = String((i === dateCol ? rest : row[i]) ?? ''); return !v.trim() || WEEKDAY_CELL.test(v.trim()) ? '' : cleanTitle(v); };
     const notes = [...noteCols].map(i => row[i]).filter(Boolean).join(' · ');
     const rowGrade = gradeCol >= 0 ? (gradeOf('gr ' + row[gradeCol]) || row[gradeCol]) : '';
     if (gradeCols) {

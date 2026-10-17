@@ -245,6 +245,14 @@ async function importFile(file, kind, status) {
       reviewImport(file, kind, { events, relief: events.relief || [], text: '', year, ai: true });
       return;
     }
+    if (kind === 'assessments' && kindOf(file) === 'pdf' && !aiReady() && !importFile.basic) {
+      status.replaceChildren(h('div', { class: 'callout warn' },
+        h('p', {}, h('strong', {}, 'Exam timetables like this need AI to read them. '), 'They’re grids of dates, grades, times, venues and initials, and reading them without AI mixes everything up. ', aiUnavailableReason()),
+        h('div', { class: 'row wrap' },
+          h('a', { class: 'btn primary', href: '#settings' }, 'Open Settings › AI writing'),
+          h('button', { class: 'btn ghost', onclick: () => { importFile.basic = true; importFile(file, kind, status).finally(() => { importFile.basic = false; }); } }, 'Try without AI anyway'))));
+      return;
+    }
     try { res = await readCalendarFile(file, kind, year); }
     catch (err) {
       if (!err.needsAi) throw err;
