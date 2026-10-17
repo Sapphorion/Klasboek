@@ -501,6 +501,97 @@ export async function aiCreate(type, o) {
   });
 }
 
+// ---------- Tests, written one question at a time ----------
+// A whole 50-mark paper in one go is long enough to time out or come back cut off. So: plan the
+// paper first (small), then write each QUESTION separately (with a retry), then draw the diagrams.
+// If one question still fails, the rest of the paper is kept and that question can be written again.
+const say = msg => { progressFn?.(msg); window.dispatchEvent(new CustomEvent('ai-progress', { detail: msg })); };
+const PLAN_SCHEMA = { type: 'object', properties: {
+  title: { type: 'string' }, time: { type: 'integer', description: 'Minutes' },
+  instructions: { type: 'array', items: { type: 'string' }, description: 'Instructions for the front page' },
+  sections: { type: 'array', description: 'The QUESTIONS of the paper in order (QUESTION 1, QUESTION 2, …)', items: { type: 'object', properties: {
+    title: { type: 'string', description: 'e.g. "Multiple choice" or "Electric circuits"' },
+    marks: { type: 'integer' },
+    focus: { type: 'string', description: 'What it covers and the kinds of questions (MCQ, definitions, calculations, data response, essay…)' },
+    visual: { type: 'string', enum: ['none', 'diagram', 'graph', 'table'], description: 'A diagram, graph or table this question needs, if any' },
+  }, required: ['title', 'marks', 'focus'] } },
+}, required: ['title', 'sections'] };
+const SECTION_SCHEMA = { type: 'object', properties: { blocks: { type: 'array', items: BLOCK_ITEM } }, required: ['blocks'] };
+const qMarks = blocks => (blocks || []).filter(b => b.type === 'question').reduce((a, b) => a + Math.max(0, +b.marks || 0), 0);
+
+export async function aiTestPlan(o) {
+  const lv = (o.levelNames || []).map((n, i) => `${i + 1} = ${n} (target ${o.levelTargets?.[i] ?? '?'}% of marks)`).join('; ');
+  const plan = await call({
+    system: CREATE_SYSTEM(o.language) + ' You are planning a test paper before it is written.',
+    content: `Plan a formal test of exactly ${o.marks} marks${o.time ? `, ${o.time} minutes` : ''}, split into 2 to 6 QUESTIONS (sections) whose marks add up to exactly ${o.marks}. Start with a short multiple-choice or terminology question where it fits the subject, end with the higher-order work. Cognitive levels to cover across the paper: ${lv}.
+Subject: ${o.subject || 'not specified'}
+Grade: ${o.grade || 'not specified'}
+Title or topic: ${o.topic || ''}
+${o.details ? 'ATP content to cover:\n' + o.details : ''}
+${o.sourceText ? 'Base it on this source material:\n---\n' + o.sourceText.slice(0, 30000) + '\n---' : ''}
+${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`,
+    tool: { name: 'save_plan', description: 'Save the plan of the paper', schema: PLAN_SCHEMA },
+    maxTokens: 3000,
+  });
+  const secs = (plan.sections || []).filter(x => x && x.title).map(x => ({ title: String(x.title), marks: Math.max(1, Math.round(+x.marks || 0)), focus: String(x.focus || ''), visual: x.visual || 'none' }));
+  if (!secs.length) throw new Error('The AI couldn’t plan the paper. Please try again.');
+  // Make the marks add up to what the teacher asked for.
+  const sum = secs.reduce((a, x) => a + x.marks, 0);
+  if (o.marks && sum !== o.marks) { secs.forEach(x => { x.marks = Math.max(1, Math.round(x.marks * o.marks / sum)); }); secs[secs.length - 1].marks += o.marks - secs.reduce((a, x) => a + x.marks, 0); }
+  return { title: plan.title || o.topic || 'Test', time: plan.time || o.time || 0, instructions: plan.instructions || [], sections: secs };
+}
+
+export async function aiTestSection(o, sec, n, all) {
+  const lv = (o.levelNames || []).map((nm, i) => `${i + 1} = ${nm}`).join('; ');
+  const brief = `Write QUESTION ${n} of this test: “${sec.title}”, exactly ${sec.marks} marks.
+What it covers: ${sec.focus}
+${sec.visual && sec.visual !== 'none' ? `It needs a ${sec.visual}: put a "${sec.visual}" block before the questions that use it.${sec.visual === 'diagram' ? ' For the diagram block give only a clear one-sentence "prompt" describing the drawing (labels as letters A, B, C… if learners must identify parts); leave "svg" empty, it is drawn separately.' : ''}` : ''}
+The whole paper, for context (do not repeat the other questions): ${all.map((x, i) => `Q${i + 1} ${x.title} (${x.marks})`).join('; ')}.
+Start with one "section" block titled “${sec.title}”, then the "question" blocks (numbered automatically, don't number them yourself). Every question has marks, a cognitive level cog (${lv}) and a full memo answer with ✓ per mark. The marks must add up to exactly ${sec.marks}.
+Subject: ${o.subject || 'not specified'}. Grade: ${o.grade || 'not specified'}. Topic: ${o.topic || ''}.
+${o.details ? 'ATP content:\n' + o.details : ''}
+${o.sourceText ? 'Source material:\n---\n' + o.sourceText.slice(0, 20000) + '\n---' : ''}
+${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`;
+  let last = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await call({ system: CREATE_SYSTEM(o.language), content: attempt && last ? `${brief}\n\nYour last try added up to ${qMarks(last)} marks instead of ${sec.marks}. Fix that.` : brief,
+        tool: { name: 'save_question', description: 'Save this question of the test', schema: SECTION_SCHEMA }, maxTokens: 12000 });
+      const blocks = (r.blocks || []).filter(b => b && b.type);
+      if (!blocks.some(b => b.type === 'question')) throw new Error('empty');
+      if (blocks[0]?.type !== 'section') blocks.unshift({ type: 'section', title: sec.title });
+      last = blocks;
+      if (qMarks(blocks) === sec.marks || attempt === 1) return blocks;
+    } catch (e) { if (attempt === 1) { if (last) return last; throw e; } say(`Trying Question ${n} again…`); }
+  }
+  return last;
+}
+
+export async function aiCreateTest(o) {
+  say('Planning the paper…');
+  let plan;
+  try { plan = await aiTestPlan(o); }
+  catch (e) { if (/API key|credit|offline|reach Claude|Rate limit|isn’t available/.test(e.message)) throw e; say('Writing the paper…'); return aiCreate('test', o); } // couldn't plan: write it in one go
+  const blocks = [], failed = [];
+  for (let i = 0; i < plan.sections.length; i++) {
+    const sec = plan.sections[i];
+    say(`Writing Question ${i + 1} of ${plan.sections.length} (${sec.title}, ${sec.marks} marks)…`);
+    try { blocks.push(...await aiTestSection(o, sec, i + 1, plan.sections)); }
+    catch (e) {
+      failed.push(i + 1);
+      blocks.push({ type: 'section', title: sec.title, text: '', redo: { ...sec } },
+        { type: 'text', text: `This question (${sec.marks} marks) didn’t come through. Tap the QUESTION ${i + 1} heading and choose “Write this question again”.` });
+    }
+  }
+  // Diagrams are drawn one by one after the questions, so a slow drawing can't break the paper.
+  const toDraw = blocks.filter(b => b.type === 'diagram' && !b.svg && b.prompt).slice(0, 4);
+  for (let k = 0; k < toDraw.length; k++) {
+    say(`Drawing diagram ${k + 1} of ${toDraw.length}…`);
+    try { const d = await aiDiagram(toDraw[k].prompt, o); if (d.svg) { toDraw[k].svg = d.svg; if (!toDraw[k].caption) toDraw[k].caption = d.caption || ''; } } catch {}
+  }
+  return { title: plan.title, time: plan.time, instructions: plan.instructions, blocks, failed };
+}
+
 // Change an existing material by instruction ("make it easier", "add two diagram questions").
 export async function aiRevise(type, current, instruction, o) {
   return call({

@@ -2,7 +2,7 @@
 // with a live A4 preview.
 import { state, onChange, saveCreation, deleteCreation, creationById, subjectById, subjectLabel, atpById, classLabel } from '../state.js';
 import { h, icon, toast, modal, confirmBox, busy, dropZone, esc } from '../ui.js';
-import { aiCreate, aiRevise, aiReady, aiUnavailableReason, aiDiagram } from '../ai.js';
+import { aiCreate, aiRevise, aiReady, aiUnavailableReason, aiDiagram, aiCreateTest, aiTestSection } from '../ai.js';
 import { extractText, matchSubject } from '../importers.js';
 import { termWeekOf, today, fmt, addDays, mondayOf } from '../dates.js';
 import { TYPES, typeInfo, isBlockDoc, BLOCKS, blockLabel, newBlock, templateCreation, blankCreation, applyAi, toAiJson, numberBlocks, totalMarks, cogGrid, COG_PRESETS, cogPresetFor, creationFromLesson, creationFromNotes } from '../create/model.js';
@@ -12,6 +12,9 @@ import { checkFor } from '../aicheck.js';
 import { graphSvg, cleanSvg, rasterise, compile } from '../create/graph.js';
 import { covers, coverById, openCoverEditor, coversSection, withCover } from '../create/covers.js';
 import { openChecker } from './checker.js';
+
+// Pop-out menus close when you tap somewhere else.
+document.addEventListener('click', e => document.querySelectorAll('details.setup-menu[open], details.version-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }));
 
 export function renderCreate(root, [id]) {
   const c = id && creationById(id);
@@ -172,16 +175,19 @@ async function buildWithAi(type, o) {
   const subj = subjectById(o.subjectId);
   const atp = o.atpId ? atpById(o.atpId) : null;
   const marks = ['test', 'worksheet'].includes(type) ? (o.marks || (type === 'test' ? 50 : 20)) : 0;
-  const r = await aiCreate(type, { subject: subj?.name, grade: c.grade, language: c.language, topic: o.title || o.topic || atp?.topic || '', details: atp?.details || '', sourceText: o.sourceText || '', extra: o.extra || '',
-    marks, time: type === 'test' ? (o.time || 60) : 0, count: o.count || { worksheet: 8, slides: 10, rubric: 5, cards: 16 }[type] || 0, length: o.length || 'medium', levelsCount: o.levelsCount || 4, levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets });
+  const brief = { subject: subj?.name, grade: c.grade, language: c.language, topic: o.title || o.topic || atp?.topic || '', details: atp?.details || '', sourceText: o.sourceText || '', extra: o.extra || '',
+    marks, time: type === 'test' ? (o.time || 60) : 0, count: o.count || { worksheet: 8, slides: 10, rubric: 5, cards: 16 }[type] || 0, length: o.length || 'medium', levelsCount: o.levelsCount || 4, levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets };
+  const r = type === 'test' ? await aiCreateTest(brief) : await aiCreate(type, brief);
   applyAi(c, r);
+  c.meta.brief = { topic: brief.topic, details: brief.details, extra: brief.extra, sourceText: (brief.sourceText || '').slice(0, 20000) };
   const empty = isBlockDoc(c) ? !c.blocks.length : c.type === 'slides' ? !c.slides.length : c.type === 'cards' ? !c.cards.length : c.type === 'rubric' ? !c.rubric.criteria.length : false;
   if (empty) throw new Error('The AI sent back an empty page. Please try again; if it keeps happening, try Claude Opus in Settings.');
   if (marks) c.meta.targetMarks = marks;
   if (!c.title) c.title = o.title || atp?.topic || typeInfo(type).label;
   await saveCreation(c);
   location.hash = 'create/' + c.id;
-  toast('Done. Tap anything on the page to change it.');
+  if (r.failed?.length) toast(`Done, but Question ${r.failed.join(' and ')} didn’t come through. Tap its heading and choose “Write this question again”.`, 'warn');
+  else toast('Done. Tap anything on the page to change it.');
   return c;
 }
 
@@ -304,7 +310,7 @@ function designer(root, c) {
     if (e.target.closest('.pv-tools')) return;
     selected = +el.dataset.i; drawEditor();
     preview.querySelectorAll('.pv-sel').forEach(x => x.classList.remove('pv-sel')); el.classList.add('pv-sel'); placeTools();
-    if (innerWidth >= 1100) editor.querySelector(`[data-ed="${selected}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (innerWidth >= 1100) { const card = editor.querySelector(`[data-ed="${selected}"]`); card?.scrollIntoView({ behavior: 'smooth', block: 'center' }); card?.querySelector('textarea, input:not([type=checkbox])')?.focus({ preventScroll: true }); }
   });
 
   const editor = h('div', { class: 'ed-list' });
@@ -333,8 +339,7 @@ function designer(root, c) {
   const titleIn = h('input', { class: 'title-input', value: c.title, 'aria-label': 'Title', oninput: e => { c.title = e.target.value; changed(); } });
   const exportBtns = h('div', { class: 'row wrap' },
     h('button', { class: 'btn', onclick: () => printCreation(c) }, icon('print'), c.type === 'slides' ? 'Print handout / PDF' : 'Print / PDF'),
-    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await withCover(await rasterise(c)))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)),
-    versionMenu());
+    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await withCover(await rasterise(c)))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)));
   const d = c.design;
   const toggle = (key, label) => h('label', { class: 'chip' }, h('input', { type: 'checkbox', checked: !!d[key], onchange: e => { d[key] = e.target.checked; changed(); } }), label);
   const buildDesignBar = () => h('div', { class: 'design-bar' },
@@ -347,7 +352,7 @@ function designer(root, c) {
       c.type === 'test' ? toggle('grid', 'Cognitive-level grid') : null,
       ['test', 'worksheet'].includes(c.type) ? coverSelect() : null,
       ['test', 'worksheet'].includes(c.type) ? (() => { const chk = checkFor(c); return h('label', { class: 'chip', title: `Hidden instruction asks AI tools to use “${chk.word}” ${chk.n} times` }, h('input', { type: 'checkbox', checked: !!chk.on, onchange: e => { chk.on = e.target.checked; changed(); } }), `Hidden AI check (“${chk.word}”)`); })() : null,
-      ['test', 'worksheet'].includes(c.type) ? h('button', { class: 'chip', onclick: () => openChecker(checkFor(c)) }, 'Check answers') : null,
+
       c.type === 'cards' && d.layout === 'wordsearch' ? h('button', { class: 'chip', onclick: () => { c.meta.seed = Math.floor(Math.random() * 1e6); changed(); } }, 'New puzzle') : null));
   const aiIn = h('input', { placeholder: 'Ask AI to change it, e.g. “make it easier for Grade 8” or “add two diagram questions”', 'aria-label': 'Change with AI', onkeydown: e => { if (e.key === 'Enter') aiBtn.click(); } });
   const aiBtn = h('button', { class: 'btn', disabled: !aiReady(), title: aiUnavailableReason() || '' }, icon('spark'), 'Change');
@@ -361,7 +366,7 @@ function designer(root, c) {
       snapshot();
       applyAi(c, r, prev);
       aiIn.value = ''; structural(); titleIn.value = c.title;
-      toast('Changed. Use Undo if you prefer the old version.');
+      toast('Changed.', 'ok', { action: { label: 'Undo', run: () => undoBtn.click() } });
     } catch (e) { toast(e.message, 'error'); } finally { done(); }
   };
 
@@ -421,16 +426,18 @@ function designer(root, c) {
   const top = h('div', { class: 'designer-top' });
   const drawTop = () => {
     const subj = subjectById(c.subjectId);
+    const setup = h('details', { class: 'more-menu setup-menu' }, h('summary', { class: 'btn ghost' }, icon('gear', 16), 'Page setup'),
+      h('div', { class: 'more-list setup-panel' }, buildDesignBar(), c.type === 'test' ? testMeta() : null));
     top.replaceChildren(
       h('div', { class: 'row between wrap' },
         h('a', { href: '#create', class: 'back' }, icon('left', 16), 'All materials'),
         h('div', { class: 'row wrap' }, undoBtn, exportBtns)),
       titleIn,
       h('p', { class: 'muted small ed-meta' }, [typeInfo(c.type).label, subj ? subjectLabel(subj) : (c.grade ? 'Grade ' + c.grade : ''), ''].filter(Boolean).join(' · '), totalsEl, checksEl),
-      buildDesignBar(),
+      h('div', { class: 'row wrap ed-toolbar' }, setup, ['test', 'worksheet', 'notes'].includes(c.type) || c.type === 'slides' ? versionMenu() : null,
+        ['test', 'worksheet'].includes(c.type) ? h('button', { class: 'btn ghost', onclick: () => openChecker(checkFor(c)) }, icon('check', 16), 'Check learners’ answers') : null),
       h('div', { class: 'ai-bar' }, aiIn, aiBtn));
   };
-  drawTop();
 
   // ---------- Editors ----------
   const field = (label, input, hint) => h('label', { class: 'field' }, h('span', { class: 'lbl' }, label), input, hint ? h('span', { class: 'hint' }, hint) : null);
@@ -447,8 +454,8 @@ function designer(root, c) {
 
   function testMeta() {
     const preset = cogPresetFor(subjectById(c.subjectId)?.name);
-    return h('details', { class: 'ed-card meta-card', open: true },
-      h('summary', {}, 'Test details and cognitive levels'),
+    return h('div', { class: 'meta-card' },
+      h('h3', {}, 'Test details and cognitive levels'),
       h('div', { class: 'form-grid' },
         field('Time (minutes)', input(c.meta.time, v => c.meta.time = +v || 0, { type: 'number', min: 0 })),
         field('Date written', input(c.meta.date || '', v => c.meta.date = v, { type: 'date' })),
@@ -511,21 +518,59 @@ function designer(root, c) {
     } catch (e) { toast(e.message, 'error'); } finally { done(); }
   }
 
+  const sectionEnd = i => { let j = i + 1; while (j < c.blocks.length && c.blocks[j].type !== 'section') j++; return j; };
+  const sectionMarks = i => c.blocks.slice(i + 1, sectionEnd(i)).filter(b => b.type === 'question').reduce((a, b) => a + (+b.marks || 0), 0);
+  // Write one QUESTION (section) again: keeps the rest of the paper exactly as it is.
+  async function rewriteSection(i, btn) {
+    const sec = c.blocks[i], end = sectionEnd(i);
+    const secs = c.blocks.map((b, k) => b.type === 'section' ? { title: b.title, marks: k === i ? (sectionMarks(k) || sec.redo?.marks || 10) : sectionMarks(k) } : null).filter(Boolean);
+    const n = c.blocks.slice(0, i + 1).filter(b => b.type === 'section').length;
+    const existing = c.blocks.slice(i + 1, end).filter(b => b.type === 'question').map(b => b.q).join(' | ').slice(0, 1500);
+    const want = { title: sec.title, marks: secs[n - 1].marks, focus: sec.redo?.focus || (existing ? `Same topic as before, new questions. Old questions were: ${existing}` : sec.title), visual: sec.redo?.visual || (c.blocks.slice(i + 1, end).some(b => b.type === 'diagram') ? 'diagram' : c.blocks.slice(i + 1, end).some(b => b.type === 'graph') ? 'graph' : 'none') };
+    const done = busy(btn, 'Writing…');
+    try {
+      const subj = subjectById(c.subjectId);
+      const o = { subject: subj?.name, grade: c.grade, language: c.language, topic: c.meta.brief?.topic || c.title, details: c.meta.brief?.details || '', extra: c.meta.brief?.extra || '', sourceText: c.meta.brief?.sourceText || '', levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets };
+      const blocks = await aiTestSection(o, want, n, secs);
+      for (const b of blocks.filter(b => b.type === 'diagram' && !b.svg && b.prompt).slice(0, 2)) { try { const d = await aiDiagram(b.prompt, o); b.svg = d.svg; b.caption ||= d.caption; } catch {} }
+      const tmp = { type: c.type, title: c.title, meta: JSON.parse(JSON.stringify(c.meta || {})), blocks: [] };
+      applyAi(tmp, { blocks });
+      snapshot();
+      c.blocks.splice(i, end - i, ...tmp.blocks);
+      selected = i; structural(); toast(`Question ${n} written again (${want.marks} marks). Undo brings back the old one.`);
+    } catch (e) { toast(e.message, 'error'); } finally { done(); }
+  }
+
+  // Questions, sections and text are always open: type straight in. Pictures, graphs and diagrams open when tapped.
+  const ALWAYS = new Set(['question', 'section', 'text', 'heading']);
   function blockEditor(b, i, labels) {
-    const open = selected === i;
+    const always = ALWAYS.has(b.type);
+    const open = selected === i || always;
     const move = dir => { const j = i + dir; if (j < 0 || j >= c.blocks.length) return; snapshot(); [c.blocks[i], c.blocks[j]] = [c.blocks[j], c.blocks[i]]; selected = j; structural(); };
     const handle = h('button', { class: 'drag-h', 'aria-label': 'Drag to move', title: 'Drag to move' }, '⋮⋮');
     const head = h('div', { class: 'ed-head' },
       handle,
-      h('button', { class: 'ed-sum', 'aria-expanded': String(open), onclick: () => { selected = open ? -1 : i; drawEditor(); renderPreview(); if (!open) scrollToSel(); } },
+      always ? h('span', { class: 'ed-sum fixed' }, h('span', { class: 'ed-type' }, b.type === 'question' ? h('b', {}, labels.get(i) || '') : icon(BLOCK_ICONS[b.type] || 'doc', 14), b.type === 'question' ? (b.kind === 'mcq' ? 'Multiple choice' : 'Question') : b.type === 'section' ? (labels.get(i) || 'Section') : blockLabel(b.type)))
+      : h('button', { class: 'ed-sum', 'aria-expanded': String(open), onclick: () => { selected = open ? -1 : i; drawEditor(); renderPreview(); if (!open) scrollToSel(); } },
         h('span', { class: 'ed-type' }, icon(BLOCK_ICONS[b.type] || 'doc', 14), blockLabel(b.type)), h('span', { class: 'ed-text' }, summary(b, i, labels))),
       open ? h('div', { class: 'row ed-tools' },
         h('button', { class: 'icon-btn', 'aria-label': 'Move up', disabled: i === 0, onclick: () => move(-1) }, icon('up', 16)),
         h('button', { class: 'icon-btn', 'aria-label': 'Move down', disabled: i === c.blocks.length - 1, onclick: () => move(1) }, icon('down', 16)),
         h('button', { class: 'icon-btn', 'aria-label': 'Duplicate', onclick: () => { snapshot(); c.blocks.splice(i + 1, 0, JSON.parse(JSON.stringify(b))); selected = i + 1; structural(); } }, icon('copy', 16)),
         h('button', { class: 'icon-btn', 'aria-label': 'Delete', onclick: () => { snapshot(); c.blocks.splice(i, 1); selected = -1; structural(); toast('Deleted. Undo brings it back.'); } }, icon('trash', 16))) : null);
-    const card = h('div', { class: 'ed-card' + (open ? ' sel' : ' closed'), 'data-ed': i }, head);
+    const card = h('div', { class: 'ed-card' + (selected === i ? ' sel' : '') + (open ? '' : ' closed') + (always ? ' always t-' + b.type : ''), 'data-ed': i }, head);
     dragReorder(handle, card, i);
+    // Typing in a block highlights it on the page, without redrawing (so the cursor stays put).
+    const pick = () => {
+      if (selected === i) return;
+      selected = i;
+      editor.querySelectorAll('.ed-card.sel').forEach(x => x.classList.remove('sel')); card.classList.add('sel');
+      preview.querySelectorAll('.pv-sel').forEach(x => x.classList.remove('pv-sel'));
+      const el = preview.querySelector(`[data-i="${i}"]`); if (el) { el.classList.add('pv-sel'); if (innerWidth >= 1100) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      placeTools();
+    };
+    card.addEventListener('focusin', pick);
+    if (always) card.addEventListener('click', pick);
     if (!open) return card;
 
     let body;
@@ -539,7 +584,13 @@ function designer(root, c) {
         input(v.term, x => v.term = x, { placeholder: 'Term', 'aria-label': 'Term' }), input(v.meaning, x => v.meaning = x, { placeholder: 'Meaning', 'aria-label': 'Meaning' }),
         h('button', { class: 'icon-btn', 'aria-label': 'Remove term', onclick: () => { b.items.splice(k, 1); structural(); } }, icon('x', 14)))),
         h('button', { class: 'btn ghost sm', onclick: () => { b.items.push({ term: '', meaning: '' }); structural(); } }, icon('plus', 14), 'Add term')); break;
-      case 'section': body = h('div', { class: 'stack' }, input(b.title, v => b.title = v, { placeholder: 'Section title, e.g. Multiple choice', 'aria-label': 'Section title' }), input(b.text, v => b.text = v, { placeholder: 'Instructions for this section (optional)', 'aria-label': 'Section instructions' })); break;
+      case 'section': {
+        const redo = h('button', { class: 'btn ghost sm', disabled: !aiReady(), title: aiUnavailableReason() || '' }, icon('spark', 14), b.redo ? 'Write this question again' : 'Rewrite this whole question with AI');
+        redo.onclick = () => rewriteSection(i, redo);
+        body = h('div', { class: 'stack' }, input(b.title, v => b.title = v, { placeholder: 'Section title, e.g. Multiple choice', 'aria-label': 'Section title' }), input(b.text, v => b.text = v, { placeholder: 'Instructions for this section (optional)', 'aria-label': 'Section instructions' }),
+          c.type === 'test' ? h('div', { class: 'row wrap' }, redo, h('span', { class: 'muted small' }, `${sectionMarks(i)} marks`)) : null);
+        break;
+      }
       case 'question': {
         const levels = c.meta?.levelNames || COG_PRESETS.general.names;
         const marksOut = h('b', { class: 'mk-val' }, String(+b.marks || 0));
@@ -681,9 +732,8 @@ function designer(root, c) {
   function drawEditor() {
     const kids = [];
     if (isBlockDoc(c)) {
-      if (c.type === 'test') kids.push(testMeta());
       const labels = numberBlocks(c.blocks);
-      kids.push(h('p', { class: 'muted small ed-tip' }, 'Tap a block here or on the page to change it. Drag ⋮⋮ to move it. Use + to add something in between.'));
+      kids.push(h('p', { class: 'muted small ed-tip' }, 'Type straight into the questions and memo. Drag ⋮⋮ to move, + adds something in between. Tap a question on the page to jump to it.'));
       kids.push(addMenu(0, true));
       c.blocks.forEach((b, i) => { kids.push(blockEditor(b, i, labels)); kids.push(addMenu(i + 1, i < c.blocks.length - 1)); });
       if (!c.blocks.length) kids.push(h('p', { class: 'empty' }, 'Empty. Use Add to put in your first question or paragraph.'));
@@ -733,6 +783,7 @@ function designer(root, c) {
     h('button', { role: 'tab', onclick: () => { pane = 'preview'; layout(); fit(); } }, 'Preview'));
   const split = h('div', { class: 'designer-split' }, h('div', { class: 'ed-pane' }, editor), previewWrap);
   const layout = () => { split.dataset.pane = pane; tabs.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-selected', String((k === 0) === (pane === 'edit')))); };
+  drawTop();
   root.replaceChildren(h('div', { class: 'page designer' }, top, tabs, split));
   layout(); drawEditor(); renderPreview();
   requestAnimationFrame(fit);

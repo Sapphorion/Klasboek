@@ -97,7 +97,7 @@ export async function exportCreationDocx(c) {
       } else if (b.type === 'section') {
         closeSec(); open = i;
         kids.push(new D.Paragraph({ keepNext: true, spacing: { before: 280, after: 80 }, border: c.design?.theme === 'classic' ? { bottom: { style: D.BorderStyle.SINGLE, size: 8, color: '111111', space: 2 } } : undefined,
-          children: [new D.TextRun({ text: `${assess ? nums.get(i) + (b.title ? ': ' : '') : ''}${b.title || ''}`, bold: true, font: hf, size: sz(26), color: col })] }));
+          children: [new D.TextRun({ text: (t => c.design?.theme === 'classic' ? t.toUpperCase() : t)(`${assess ? nums.get(i) + (b.title ? ': ' : '') : ''}${b.title || ''}`), bold: true, font: hf, size: sz(26), color: col })] }));
         if (b.text) kids.push(para(b.text, { italics: true }));
       } else if (b.type === 'question') {
         const qLines = String(b.q || '').split('\n');

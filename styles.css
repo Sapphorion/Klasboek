@@ -1033,6 +1033,9 @@ p.bad, td.bad { color: var(--margin); font-weight: 700; }
   box-shadow: 0 6px 20px rgba(20, 40, 33, .14); font-size: .92rem; line-height: 1.35;
   opacity: 0; transform: translateX(1.5rem); pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
 #toast.show { opacity: 1; transform: none; pointer-events: auto; }
+/* The words let clicks through to what's underneath; only the buttons catch them. In Create the card sits under the top bar so Undo/Print stay reachable. */
+#toast.show .toast-msg, #toast.show .toast-ic { pointer-events: none; }
+@media (min-width: 701px) { body:has(.designer-top) #toast { top: 5.2rem; } }
 #toast[data-kind="error"] { border-left-color: var(--margin); }
 #toast[data-kind="warn"] { border-left-color: var(--warn); }
 .toast-ic { flex: none; display: grid; place-items: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #E3F1E8; color: var(--ok); margin-top: -.05rem; }
@@ -1220,6 +1223,24 @@ dialog #toast { position: fixed; }
 .duty-box h3 { margin: 0 0 .4rem; }
 .w-initials { width: 6rem; text-transform: uppercase; }
 .inline-field { grid-auto-flow: row; }
+
+/* ---------- Create: calmer editor ---------- */
+.ed-toolbar { gap: .5rem; margin: .4rem 0 .5rem; }
+.setup-menu .setup-panel { left: 0; right: auto; width: min(44rem, calc(100vw - 2rem)); padding: .9rem 1rem; display: grid; gap: .8rem; max-height: 75vh; overflow: auto; }
+.setup-panel .design-bar { display: grid; gap: .6rem; margin: 0; }
+.setup-panel .meta-card h3 { margin: .2rem 0 .5rem; font-size: 1rem; }
+.ed-card.always { padding: .55rem .7rem .7rem; }
+.ed-card.always .ed-head { margin-bottom: .35rem; }
+.ed-sum.fixed { cursor: default; background: none; border: 0; padding: 0; display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; font: inherit; }
+.ed-sum.fixed .ed-type b { color: var(--ink); font-size: .95rem; margin-right: .3rem; }
+.ed-card.t-section { background: color-mix(in srgb, var(--chalk) 6%, var(--sheet)); border-color: color-mix(in srgb, var(--chalk) 25%, var(--line)); }
+.ed-card.t-section .ed-type { font-weight: 800; color: var(--ink); }
+.ed-card .ed-tools { opacity: .35; transition: opacity .15s; }
+.ed-card:hover .ed-tools, .ed-card:focus-within .ed-tools, .ed-card.sel .ed-tools { opacity: 1; }
+.ed-card .ed-ai { display: none; }
+.ed-card.sel .ed-ai, .ed-card:focus-within .ed-ai { display: grid; }
+.ed-card.always textarea { min-height: 2.4rem; }
+.ed-card.always .q-opts { gap: .4rem .9rem; font-size: .88rem; }
 
 /* ---------- Welcome ---------- */
 dialog.modal.welcome { width: min(44rem, 94vw); }

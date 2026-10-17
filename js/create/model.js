@@ -231,7 +231,7 @@ export function applyAi(c, r, previous = null) {
         xmin: isFinite(+b.xmin) && b.xmin !== undefined ? +b.xmin : -5, xmax: isFinite(+b.xmax) && b.xmax !== undefined ? +b.xmax : 5, ymin: isFinite(+b.ymin) && b.ymin !== undefined ? +b.ymin : -5, ymax: isFinite(+b.ymax) && b.ymax !== undefined ? +b.ymax : 5, caption: b.caption || '' };
       if (b.type === 'vocab') return { type: 'vocab', items: (b.terms || b.items || []).map(t => typeof t === 'string' ? { term: t, meaning: '' } : t) };
       if (b.type === 'question') return { type: 'question', q: b.q || b.text || '', marks: Math.max(0, +b.marks || 1), cog: Math.min(4, Math.max(1, +b.cog || 1)), kind: b.kind === 'mcq' ? 'mcq' : 'open', options: b.kind === 'mcq' ? (b.options || []).slice(0, 6) : [], answer: b.answer || '', lines: null };
-      if (b.type === 'section') return { type: 'section', title: b.title || b.text || '', text: b.title ? (b.text || '') : '' };
+      if (b.type === 'section') return { type: 'section', title: b.title || b.text || '', text: b.title ? (b.text || '') : '', ...(b.redo ? { redo: b.redo } : {}) };
       if (b.type === 'box') return { type: 'box', title: b.title || '', text: b.text || '', style: b.style || 'key' };
       if (b.type === 'list') return { type: 'list', items: b.items || [] };
       if (b.type === 'table') return { type: 'table', rows: b.rows?.length ? b.rows : [['']] };
