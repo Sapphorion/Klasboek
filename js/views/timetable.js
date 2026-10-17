@@ -40,7 +40,7 @@ function view() {
           await saveTimetable({ image: dataUrl });
           if (!aiReady()) { status.replaceChildren(h('p', { class: 'warn' }, `${aiUnavailableReason()} The photo is shown below the grid so you can copy it in by hand.`)); return; }
           res = await aiReadTimetable(dataUrl, tt.days);
-          res.cycle = res.cells.some(c => c.week === 2) ? 2 : 1;
+          res.cycle = (res.cells || []).some(c => c.week === 2) ? 2 : 1;
         } else res = await readTimetableFile(file);
         status.replaceChildren();
         applyImport(res);
@@ -144,6 +144,10 @@ function ttGrid(week) {
 // Imported periods/cells → timetable, matching subject names to the teacher's subjects.
 function applyImport(res) {
   const tt = state.timetable;
+  // Tidy what came in (the AI or a file can leave out a class, send a number as the label, or a blank cell).
+  const str = v => v == null ? '' : String(v).trim();
+  res = { ...res, periods: (res.periods || []).map(p => ({ ...p, label: str(p.label), start: str(p.start), end: str(p.end) })),
+    cells: (res.cells || []).map(c => ({ ...c, subject: str(c.subject), cls: str(c.cls), room: str(c.room), dayIndex: +c.dayIndex, periodIndex: +c.periodIndex })).filter(c => c.subject && Number.isFinite(c.dayIndex) && Number.isFinite(c.periodIndex)) };
   const periods = res.periods.map((p, i) => ({ id: tt.periods[i]?.id || uid('p'), label: p.label || String(i + 1), start: p.start || tt.periods[i]?.start || '', end: p.end || tt.periods[i]?.end || '' }));
   const two = res.cycle === 2;
   // A one-week file goes into the week being edited (so you can import Week B on its own).

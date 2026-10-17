@@ -497,6 +497,7 @@ function splitCell(v) {
 const ALIASES = { mathematics: ['maths', 'math', 'wiskunde', 'wisk', 'mat'], 'mathematical literacy': ['math lit', 'maths lit', 'ml', 'wiskundige geletterdheid'], english: ['eng', 'english hl', 'english fal', 'efal', 'ehl'], afrikaans: ['afr', 'afrikaans eat', 'afrikaans ht', 'afr eat', 'afr ht'], 'physical sciences': ['phys sci', 'physics', 'ps', 'fisiese wetenskappe', 'fis wet'], 'life sciences': ['life sci', 'ls', 'biology', 'lewenswetenskappe', 'lewenswet'], 'natural sciences': ['ns', 'nat sci', 'natuurwetenskappe'], 'life orientation': ['lo', 'lewensoriëntering'] };
 // cls (optional) is the class, e.g. "11A": a subject for another grade never matches.
 export function matchSubject(text, subjects, cls = '') {
+  text = text == null ? '' : String(text); cls = cls == null ? '' : String(cls);
   const t = String(text).toLowerCase();
   if (!t) return null;
   const g = (String(cls || '').match(/^\s*(?:gr(?:ade|aad)?\.?\s*)?(\d{1,2})(?!\d)/i) || [])[1] || gradeOf(text).replace(/^R$/, '0') || (String(text).match(/\b(\d{1,2})\s?[a-z]\b/i) || [])[1] || '';
