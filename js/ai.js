@@ -371,17 +371,24 @@ const EVENTS_SCHEMA = {
           grade: { type: 'string', description: 'Grade number or R if the event is for one grade, else empty' },
           subject: { type: 'string', description: 'Subject name if it is a test or exam, else empty' },
           noTeaching: { type: 'boolean', description: 'True if there is no normal teaching that day (public holiday, school closed, staff development day)' },
+          start: { type: 'string', description: 'Exams: start time HH:MM (often the column heading, e.g. 09:00 or 14:00), else empty' },
+          durationMins: { type: 'integer', description: 'Exams: length in minutes from e.g. "(2½ hrs)" = 150, else 0' },
+          venues: { type: 'array', description: 'Exams: each venue and the invigilators’ initials written for it, e.g. "H1 – AB, TK; H2 – GJ" → [{venue:"H1",initials:["AB","TK"]},{venue:"H2",initials:["GJ"]}]. Empty if none.',
+            items: { type: 'object', properties: { venue: { type: 'string' }, initials: { type: 'array', items: { type: 'string' } } }, required: ['venue', 'initials'] } },
         },
         required: ['date', 'title', 'type'],
       },
     },
+    relief: { type: 'array', description: 'Daily relief or standby duty, e.g. "Relief: SC" under a date → {date, initials:["SC"]}',
+      items: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD' }, initials: { type: 'array', items: { type: 'string' } } }, required: ['date', 'initials'] } },
   },
   required: ['events'],
 };
 
 export async function aiReadCalendar({ text, image, pdf }, kind, year) {
   const what = kind === 'assessments' ? 'a test and exam timetable' : 'a school year planner (calendar of events)';
-  const intro = `This is ${what} from a South African school. The year is ${year} unless the document says otherwise. List every dated item. For exam or test timetables, make one item per grade and subject paper. Use type "holiday" for public holidays and days without school.`;
+  const intro = `This is ${what} from a South African school. The year is ${year} unless the document says otherwise. List every dated item. For exam or test timetables, make one item per grade and subject paper. Use type "holiday" for public holidays and days without school.` + (kind === 'assessments'
+    ? ` Exam timetables are often a grid: dates down the side, grades across the top, and a start time (e.g. 09:00 or 14:00) per column. Work out each paper's grade and start time from its column. Put the paper in the title like "Gr 10 Life Sciences P1". Give the duration in minutes, every venue with the invigilators' initials written for it (they often look like "H1 – AB, TK; H2 – GJ" or "DRAMA ROOM – NR"), and list each day's "Relief:" initials under relief. Days marked "Non-examination day" are type "event" with that title.` : '');
   const content = image
     ? [{ type: 'image', source: { type: 'base64', media_type: image.split(';')[0].slice(5), data: image.split(',')[1] } }, { type: 'text', text: intro }]
     : pdf ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdf } }, { type: 'text', text: intro }]
@@ -392,10 +399,18 @@ export async function aiReadCalendar({ text, image, pdf }, kind, year) {
     tool: { name: 'save_events', description: 'Save the calendar events', schema: EVENTS_SCHEMA },
     maxTokens: 16000,
   });
-  return (r.events || []).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date)).map(e => ({
-    date: e.date, endDate: /^\d{4}-\d{2}-\d{2}$/.test(e.endDate || '') && e.endDate > e.date ? e.endDate : '',
-    title: e.title || '', type: e.type || 'event', time: e.time || '', grade: e.grade || '', subject: e.subject || '', noTeaching: !!e.noTeaching || e.type === 'holiday',
-  }));
+  const hm = t => { const m = String(t || '').match(/(\d{1,2})[:h.](\d{2})/); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''; };
+  const plus = (t, mins) => { if (!t || !mins) return ''; const [a, b] = t.split(':').map(Number); const x = a * 60 + b + mins; return `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+  const events = (r.events || []).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.date)).map(e => {
+    const start = hm(e.start) || hm(e.time); const end = plus(start, +e.durationMins || 0);
+    return {
+      date: e.date, endDate: /^\d{4}-\d{2}-\d{2}$/.test(e.endDate || '') && e.endDate > e.date ? e.endDate : '',
+      title: e.title || '', type: e.type || 'event', time: start && end ? `${start}–${end}` : e.time || start || '', grade: String(e.grade || ''), subject: e.subject || '', noTeaching: !!e.noTeaching || e.type === 'holiday',
+      venues: (Array.isArray(e.venues) ? e.venues : []).map(v => ({ venue: String(v.venue || '').trim(), initials: (Array.isArray(v.initials) ? v.initials : String(v.initials || '').split(/[,;&\s]+/)).map(x => String(x).trim().toUpperCase()).filter(Boolean) })),
+    };
+  });
+  events.relief = (Array.isArray(r.relief) ? r.relief : []).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x.date)).map(x => ({ date: x.date, initials: (Array.isArray(x.initials) ? x.initials : String(x.initials || '').split(/[,;&\s]+/)).map(i => String(i).trim().toUpperCase()).filter(Boolean) }));
+  return events;
 }
 
 // ---------- Moderation notice ----------

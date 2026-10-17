@@ -9,6 +9,7 @@ export const EVENT_TYPES = [
   { id: 'holiday', label: 'Holiday or no school', colour: '#2E7D4F' },
   { id: 'meeting', label: 'Meeting', colour: '#8E44AD' },
   { id: 'event', label: 'School event', colour: '#1E3B33' },
+  { id: 'duty', label: 'Duty (invigilation, relief)', colour: '#5E6B1F' },
   { id: 'reminder', label: 'Reminder or note', colour: '#B8336A' },
 ];
 export const typeOf = id => EVENT_TYPES.find(t => t.id === id) || EVENT_TYPES.at(-1);

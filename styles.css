@@ -1216,6 +1216,11 @@ dialog #toast { position: fixed; }
 
 .account-sec label.check { display: inline-flex; width: auto; justify-self: start; }
 
+.duty-box { border: 1px solid var(--line); border-left: 4px solid #5E6B1F; border-radius: var(--radius-s); padding: .7rem .9rem; margin: .8rem 0; background: var(--sheet); }
+.duty-box h3 { margin: 0 0 .4rem; }
+.w-initials { width: 6rem; text-transform: uppercase; }
+.inline-field { grid-auto-flow: row; }
+
 /* ---------- Welcome ---------- */
 dialog.modal.welcome { width: min(44rem, 94vw); }
 dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: grid; gap: .9rem; }

@@ -29,9 +29,21 @@ function view() {
 
   const status = h('div', { 'aria-live': 'polite' });
   const importer = dropZone({
-    accept: '.xlsx,.xls,.csv,.docx,image/*', label: 'Import a timetable',
+    accept: '.xlsx,.xls,.csv,.docx,.pdf,image/*', label: 'Import a timetable',
     hint: 'Excel or Word is read on your device. A photo or screenshot is read by AI. Two-week (Week A/B or Day 1–10) timetables work too.',
     onFiles: async ([file]) => {
+      // An exam or invigilation timetable belongs on the calendar, not in the weekly timetable.
+      if (kindOf(file) === 'pdf' || /exam|eksamen|invigil|toesig/i.test(file.name)) {
+        status.replaceChildren(h('div', { class: 'callout' },
+          /exam|eksamen|invigil|toesig/i.test(file.name) ? h('p', {}, h('strong', {}, 'This looks like an exam timetable. '), 'Exams and invigilation go on the school calendar (with your duties), not in your weekly teaching timetable.') : h('p', {}, h('strong', {}, 'Is this an exam or test timetable? '), 'Those go on the school calendar. For your weekly teaching timetable, upload it as Excel, Word or a photo/screenshot instead of a PDF.'),
+          h('button', { class: 'btn primary', onclick: async () => { const st = h('div'); status.replaceChildren(st); const c = await import('./calendar.js'); await c.importAssessmentFile(file, st); } }, 'Read it as an exam timetable'),
+          kindOf(file) === 'pdf' ? null : h('button', { class: 'btn ghost', onclick: () => readAsTimetable(file) }, 'No, it’s my teaching timetable')));
+        return;
+      }
+      readAsTimetable(file);
+    },
+  });
+  async function readAsTimetable(file) {
       status.replaceChildren(h('span', { class: 'spinner' }), ` Reading ${file.name}…`);
       try {
         let res;
@@ -45,8 +57,7 @@ function view() {
         status.replaceChildren();
         applyImport(res);
       } catch (e) { status.replaceChildren(h('p', { class: 'error' }, e.message)); }
-    },
-  });
+  }
 
   // ---------- Cycle ----------
   const cycleBox = h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Timetable repeats'),

@@ -1,5 +1,5 @@
 // School calendar: year planner, test and exam timetables, holidays, meetings, deadlines.
-import { state, onChange, saveEvent, saveEvents, deleteEvents, eventById, subjectById, subjectLabel, addMaterial } from '../state.js';
+import { state, onChange, saveSettings, saveEvent, saveEvents, deleteEvents, eventById, subjectById, subjectLabel, addMaterial } from '../state.js';
 import { h, icon, toast, modal, confirmBox, dropZone, busy } from '../ui.js';
 import { readCalendarFile, matchSubject, kindOf } from '../importers.js';
 import { aiReadCalendar, aiReady, aiUnavailableReason } from '../ai.js';
@@ -235,6 +235,16 @@ async function importFile(file, kind, status) {
   }
   try {
     let res;
+    // Exam timetables are grids (dates × grades × times): AI reads the PDF or photo far better than plain text.
+    if (kind === 'assessments' && aiReady() && ['pdf', 'image'].includes(kindOf(file))) {
+      status.replaceChildren(h('span', { class: 'spinner' }), ' Claude is reading the exam timetable… up to a minute');
+      const image = kindOf(file) === 'image' ? await shrinkImage(file, 2400) : null;
+      const pdf = kindOf(file) === 'pdf' ? await toBase64(file) : null;
+      const events = await aiReadCalendar(image ? { image } : { pdf }, kind, year);
+      status.replaceChildren();
+      reviewImport(file, kind, { events, relief: events.relief || [], text: '', year, ai: true });
+      return;
+    }
     try { res = await readCalendarFile(file, kind, year); }
     catch (err) {
       if (!err.needsAi) throw err;
@@ -242,13 +252,15 @@ async function importFile(file, kind, status) {
       status.replaceChildren(h('span', { class: 'spinner' }), ' Claude is reading it… up to a minute');
       const image = kindOf(file) === 'image' ? await shrinkImage(file, 2000) : null;
       const pdf = kindOf(file) === 'pdf' ? await toBase64(file) : null;
-      res = { events: await aiReadCalendar(image ? { image } : { pdf }, kind, year), text: '', year, ai: true };
+      const evs = await aiReadCalendar(image ? { image } : { pdf }, kind, year);
+      res = { events: evs, relief: evs.relief || [], text: '', year, ai: true };
     }
     status.replaceChildren();
     reviewImport(file, kind, res);
   } catch (err) { status.replaceChildren(h('p', { class: 'error' }, err.message)); }
 }
 
+export async function importAssessmentFile(file, status) { return importFile(file, 'assessments', status); }
 export function reviewEvents(file, events, kind = 'external') { reviewImport(file, kind, { events, text: '', ai: true }); }
 
 function reviewImport(file, kind, res) {
@@ -262,6 +274,43 @@ function reviewImport(file, kind, res) {
       return { ...e, subjectId, include: keep, dup };
     });
   }
+  // Invigilation and relief duties for you, found by your initials.
+  const hasDuties = () => rows.some(r => r.venues?.some(v => v.initials.length)) || (res.relief || []).length;
+  let dutyRows = [], moveLessons = true;
+  const minsOf = t => { const m = String(t).match(/(\d{2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+  const periodsIn = time => {
+    const [a, b] = String(time || '').split(/[–-]/).map(minsOf);
+    if (a == null || b == null) return [];
+    return state.timetable.periods.filter(p => { const s = minsOf(p.start), e = minsOf(p.end); return s != null && e != null && s < b && e > a; }).map(p => p.id);
+  };
+  const findDuties = () => {
+    const me = String(state.settings.initials || '').trim().toUpperCase();
+    if (!me) { dutyRows = []; return; }
+    dutyRows = [
+      ...rows.flatMap(r => (r.venues || []).filter(v => v.initials.includes(me)).map(v => {
+        const others = v.initials.filter(i => i !== me);
+        return { date: r.date, time: r.time || '', type: 'duty', title: `Invigilate: ${r.title}${v.venue ? ' · ' + v.venue : ''}`, notes: `Exam invigilation${v.venue ? ' in ' + v.venue : ''}${others.length ? ' with ' + others.join(', ') : ''}.`, grade: r.grade || '', include: !state.events.some(x => x.date === r.date && x.title === `Invigilate: ${r.title}${v.venue ? ' · ' + v.venue : ''}`) };
+      })),
+      ...(res.relief || []).filter(x => x.initials.includes(me)).map(x => ({ date: x.date, time: '', type: 'duty', title: 'Relief duty', notes: 'On relief duty for the exam day.', grade: '', include: !state.events.some(e => e.date === x.date && e.title === 'Relief duty') })),
+    ].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  };
+  findDuties();
+  const dutySection = () => !hasDuties() ? null : h('section', { class: 'duty-box' },
+    h('h3', {}, 'Your invigilation and relief duties'),
+    h('div', { class: 'row wrap' },
+      h('label', { class: 'field inline-field' }, h('span', { class: 'lbl' }, 'Your initials on the timetable'),
+        h('input', { class: 'w-initials', value: state.settings.initials || '', placeholder: 'e.g. NS', maxlength: 4, onchange: async e => { await saveSettings({ initials: e.target.value.trim().toUpperCase() }); findDuties(); draw(); } })),
+      dutyRows.length ? h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: moveLessons, onchange: e => { moveLessons = e.target.checked; } }), 'I’m not teaching while I invigilate: move my lessons out of those times') : null),
+    !state.settings.initials ? h('p', { class: 'muted small' }, 'Type your initials as they appear next to the venues (like “H9 – NS”). Your duties are then added to your calendar and diary.')
+      : !dutyRows.length ? h('p', { class: 'muted small' }, `No duties found for ${state.settings.initials} in this timetable.`)
+      : h('div', { class: 'table-wrap' }, h('table', { class: 'edit-table' },
+          h('thead', {}, h('tr', {}, ['', 'Date', 'Time', 'Duty', 'Notes'].map(t => h('th', {}, t)))),
+          h('tbody', {}, dutyRows.map(d => h('tr', { class: d.include ? '' : 'off' },
+            h('td', {}, h('input', { type: 'checkbox', checked: d.include, 'aria-label': 'Include ' + d.title, onchange: e => { d.include = e.target.checked; e.target.closest('tr').classList.toggle('off', !d.include); count(); } })),
+            h('td', {}, fmt(d.date, { weekday: 'short', day: 'numeric', month: 'short' })),
+            h('td', {}, h('input', { class: 'w-time', value: d.time, oninput: e => d.time = e.target.value })),
+            h('td', {}, h('input', { value: d.title, oninput: e => d.title = e.target.value })),
+            h('td', { class: 'small muted' }, d.notes)))))));
   const body = h('div', {});
   const m = modal(kind === 'external' ? 'Check the events from Google or Outlook' : `Check the ${kind === 'planner' ? 'year planner' : 'test and exam timetable'}`, body, { wide: true });
   const draw = () => {
@@ -275,12 +324,14 @@ function reviewImport(file, kind, res) {
       h('div', { class: 'row wrap' },
         aiReady() && !res.ai ? (() => { const b = h('button', { class: 'btn ghost sm' }, icon('spark', 16), 'Read with AI instead'); b.onclick = async () => {
           const done = busy(b, 'Reading… up to a minute');
-          try { rows = prep(await aiReadCalendar({ text: res.text }, kind, res.year || state.settings.year)); res.ai = true; draw(); }
+          try { const evs = await aiReadCalendar({ text: res.text }, kind, res.year || state.settings.year); rows = prep(evs); res.relief = evs.relief || []; res.ai = true; draw(); }
           catch (e) { toast(e.message, 'error'); } finally { done(); }
         }; return b; })() : null,
         h('button', { class: 'btn ghost sm', onclick: () => { rows.forEach(r => r.include = !r.dup); draw(); } }, 'Tick all'),
         h('button', { class: 'btn ghost sm', onclick: () => { rows.forEach(r => r.include = false); draw(); } }, 'Untick all'),
         rows.some(r => r.dup) ? h('span', { class: 'muted small' }, `${rows.filter(r => r.dup).length} already in your calendar (unticked).`) : null),
+      dutySection(),
+      hasDuties() ? h('h3', {}, 'Exams') : null,
       h('div', { class: 'table-wrap' }, h('table', { class: 'edit-table ev-table' },
         h('thead', {}, h('tr', {}, ['', 'Date', 'Until', 'Type', 'Title', 'Time', 'Grade', 'My subject', 'No teaching'].map(t => h('th', {}, t)))),
         h('tbody', {}, rows.map(r => h('tr', { class: r.include ? '' : 'off' },
@@ -301,18 +352,21 @@ function reviewImport(file, kind, res) {
     count();
   };
   const saveBtn = h('button', { class: 'btn primary', onclick: async () => {
-    const list = rows.filter(r => r.include && r.date && r.title.trim()).map(({ include, dup, subject, ...e }) => ({ ...e, title: e.title.trim(), endDate: e.endDate && e.endDate > e.date ? e.endDate : '', notes: e.notes || '', cls: '', source: e.source || file.name }));
-    if (!list.length) { toast('Tick at least one event to save.', 'error'); return; }
-    await saveEvents(list);
+    const list = rows.filter(r => r.include && r.date && r.title.trim()).map(({ include, dup, subject, venues, ...e }) => ({ ...e, title: e.title.trim(), endDate: e.endDate && e.endDate > e.date ? e.endDate : '', notes: e.notes || (venues?.length ? 'Venues: ' + venues.map(v => `${v.venue}${v.initials.length ? ' (' + v.initials.join(', ') + ')' : ''}`).join('; ') : ''), cls: '', source: e.source || file.name }));
+    const duties = dutyRows.filter(d => d.include && d.date).map(({ include, ...d }) => ({ ...d, endDate: '', subjectId: '', cls: '', noTeaching: false, blockedPeriods: moveLessons ? periodsIn(d.time) : [], source: file.name }));
+    if (!list.length && !duties.length) { toast('Tick at least one event to save.', 'error'); return; }
+    await saveEvents([...list, ...duties]);
+    const lost = duties.filter(d => d.blockedPeriods.length).map(d => ({ from: d.date, to: d.date }));
+    if (lost.length) setTimeout(() => afterTeachingChange({ blocked: lost }, 'You’re invigilating during some of your lessons.'), 700);
     await addMaterial(file, { kind: 'calendar' }).catch(() => {});
     m.close();
     const blocked = list.filter(e => e.noTeaching).map(e => ({ from: e.date, to: e.endDate || e.date }));
     if (blocked.length) setTimeout(() => afterTeachingChange({ blocked }, 'Some of the new events have no lessons.'), 400);
     const first = list.map(e => e.date).sort()[0];
     month = first.slice(0, 7); selected = first; mode = 'month'; rerender();
-    toast(`Saved ${list.length} event${list.length > 1 ? 's' : ''}. The original file is in Materials.`);
+    toast(`Saved ${list.length} event${list.length === 1 ? '' : 's'}${duties.length ? ` and ${duties.length} dut${duties.length === 1 ? 'y' : 'ies'}` : ''}. The original file is in Materials.`);
   } });
-  const count = () => { saveBtn.textContent = `Save ${rows.filter(r => r.include).length} events`; };
+  const count = () => { const d = dutyRows.filter(x => x.include).length; saveBtn.textContent = `Save ${rows.filter(r => r.include).length} events${d ? ` + ${d} dut${d === 1 ? 'y' : 'ies'}` : ''}`; };
   draw();
 }
 
