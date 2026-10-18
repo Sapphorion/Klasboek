@@ -9,7 +9,15 @@ import { uid } from '../db.js';
 export const FIELDS = [
   ['title', 'Title'], ['subject', 'Subject'], ['grade', 'Grade'], ['marks', 'Marks'], ['time', 'Time'],
   ['date', 'Date'], ['teacher', 'Teacher / examiner'], ['school', 'School'], ['term', 'Term'], ['year', 'Year'],
+  ['instructions', 'Instructions'],
 ];
+const BLOCK = new Set(['instructions']); // a wrapped box rather than one line
+// The instructions on the cover: the test's own, or the cover's standard ones when the test has none.
+export function coverInstructions(cover, c) {
+  const own = (c.meta?.instructions || []).filter(Boolean);
+  return own.length ? own : String(cover?.instructions || '').split('\n').map(t => t.trim()).filter(Boolean);
+}
+export const coverHasInstructions = cover => !!cover?.fields?.some(f => f.key === 'instructions');
 const fieldLabel = k => FIELDS.find(f => f[0] === k)?.[1] || k;
 
 export const covers = () => state.settings.covers || [];
@@ -33,7 +41,7 @@ export function fieldValue(key, c) {
     default: return '';
   }
 }
-const SAMPLE = { title: 'Term 4 Controlled Test', subjectId: '', grade: '10', meta: { time: 60 }, blocks: [{ type: 'question', marks: 50 }] };
+const SAMPLE = { title: 'Term 4 Controlled Test', subjectId: '', grade: '10', meta: { time: 60, instructions: [] }, blocks: [{ type: 'question', marks: 50 }] };
 
 // ---------- Turning the upload into a page picture ----------
 export async function fileToPage(file) {
@@ -68,10 +76,37 @@ export async function fileToPage(file) {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 export function coverHtml(cover, c, { editing = false } = {}) {
   const spans = (cover.fields || []).map((f, i) => {
+    if (BLOCK.has(f.key)) {
+      const list = coverInstructions(cover, c);
+      const items = list.length ? list : editing ? ['[The test’s instructions go here]'] : [];
+      const style = `left:${f.x}%;top:${f.y}%;width:${f.w || 80}%;font-size:${f.size || 1.8}cqw;font-weight:${f.bold === true ? 700 : 400}`;
+      return `<div class="uc-f uc-block${editing ? ' ed' : ''}" data-f="${i}" style="${style}">${items.length && f.heading !== false ? '<b class="uc-h">Instructions</b>' : ''}<ol>${items.map(t => `<li>${esc(t)}</li>`).join('')}</ol></div>`;
+    }
     const val = fieldValue(f.key, c) || (editing ? `[${fieldLabel(f.key)}]` : '');
     return `<span class="uc-f${editing ? ' ed' : ''}" data-f="${i}" style="left:${f.x}%;top:${f.y}%;font-size:${f.size || 2.1}cqw;font-weight:${f.bold === false ? 400 : 700}">${esc(val)}</span>`;
   }).join('');
   return `<div class="ucover" style="aspect-ratio:${cover.w}/${cover.h}"><img src="${cover.src}" alt="">${spans}</div>`;
+}
+
+// Numbered, wrapped instructions drawn onto the cover picture (matches the on-screen box).
+function drawBlock(g, cover, f, items) {
+  if (!items.length) return;
+  const px = Math.round((f.size || 1.8) / 100 * cover.w), lh = px * 1.35;
+  const x0 = f.x / 100 * cover.w, maxW = (f.w || 80) / 100 * cover.w, indent = px * 1.6;
+  let y = f.y / 100 * cover.h + px / 2;
+  g.textBaseline = 'middle';
+  if (f.heading !== false) { g.font = `700 ${px}px Arial, Helvetica, sans-serif`; g.fillText('Instructions', x0, y); y += lh * 1.15; }
+  g.font = `${f.bold === true ? 700 : 400} ${px}px Arial, Helvetica, sans-serif`;
+  items.forEach((t, n) => {
+    g.fillText(`${n + 1}.`, x0, y);
+    let line = '';
+    for (const w of String(t).split(/\s+/)) {
+      const test = line ? line + ' ' + w : w;
+      if (g.measureText(test).width > maxW - indent && line) { g.fillText(line, x0 + indent, y); y += lh; line = w; } else line = test;
+    }
+    if (line) { g.fillText(line, x0 + indent, y); y += lh; }
+    y += lh * .2;
+  });
 }
 
 // A flat picture of the filled-in cover, for Word.
@@ -83,6 +118,7 @@ export function coverPng(cover, c) {
       const g = cv.getContext('2d'); g.drawImage(img, 0, 0, cover.w, cover.h);
       g.fillStyle = '#111'; g.textBaseline = 'middle';
       for (const f of cover.fields || []) {
+        if (BLOCK.has(f.key)) { drawBlock(g, cover, f, coverInstructions(cover, c)); continue; }
         const val = fieldValue(f.key, c); if (!val) continue;
         g.font = `${f.bold === false ? 400 : 700} ${Math.round((f.size || 2.1) / 100 * cover.w)}px Arial, Helvetica, sans-serif`;
         g.fillText(val, f.x / 100 * cover.w, f.y / 100 * cover.h);
@@ -118,7 +154,7 @@ export function openCoverEditor(existing, done = () => {}) {
   const cv = existing ? JSON.parse(JSON.stringify(existing)) : { id: '', name: 'School cover sheet', src: '', w: 0, h: 0, fields: [] };
   const body = h('div', { class: 'cover-editor' });
   const m = modal(existing ? 'Edit cover sheet' : 'Upload a cover sheet', body, { wide: true });
-  let sel = -1;
+  let sel = -1, redrawPage = () => {};
   const draw = () => {
     if (!cv.src) {
       const status = h('div', { 'aria-live': 'polite' });
@@ -132,6 +168,8 @@ export function openCoverEditor(existing, done = () => {}) {
     }
     const page = h('div', { class: 'uc-stage', html: coverHtml(cv, SAMPLE, { editing: true }) });
     const box = page.firstChild;
+    // Redraw with the new instructions, keeping the cursor in the box being typed in.
+    redrawPage = () => { const a = document.activeElement, pos = a?.selectionStart; draw(); const t = body.querySelector('.uc-fieldbar textarea'); if (t && a?.tagName === 'TEXTAREA') { t.focus(); t.setSelectionRange(pos, pos); } };
     // Drag fields to where they belong.
     box.querySelectorAll('.uc-f').forEach(el => {
       const i = +el.dataset.f;
@@ -154,6 +192,18 @@ export function openCoverEditor(existing, done = () => {}) {
     const fieldBar = h('div', { class: 'uc-fieldbar' });
     const drawFieldBar = () => {
       const f = cv.fields[sel];
+      if (f && BLOCK.has(f.key)) {
+        fieldBar.replaceChildren(h('div', { class: 'stack' },
+          h('div', { class: 'row wrap' }, h('strong', {}, 'Instructions'),
+            h('label', { class: 'inline' }, 'Size', h('select', { onchange: e => { f.size = +e.target.value; draw(); } }, [[1.4, 'Small'], [1.8, 'Normal'], [2.2, 'Large']].map(([v, l]) => h('option', { value: v, selected: (f.size || 1.8) === v }, l)))),
+            h('label', { class: 'inline' }, 'Width', h('select', { onchange: e => { f.w = +e.target.value; draw(); } }, [[45, 'Half the page'], [65, 'Two thirds'], [84, 'Most of the page'], [92, 'Full width']].map(([v, l]) => h('option', { value: v, selected: (f.w || 80) === v }, l)))),
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.heading !== false, onchange: e => { f.heading = e.target.checked; draw(); } }), 'Show the heading “Instructions”'),
+            h('button', { class: 'link small danger', onclick: () => { cv.fields.splice(sel, 1); sel = -1; draw(); } }, 'Remove')),
+          h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Standard instructions for this cover (one per line)'),
+            h('textarea', { rows: 4, placeholder: 'e.g. Answer ALL the questions.\nWrite neatly in blue or black pen.\nNon-programmable calculators may be used.', oninput: e => { cv.instructions = e.target.value; clearTimeout(drawFieldBar.t); drawFieldBar.t = setTimeout(redrawPage, 400); } }, cv.instructions || '')),
+          h('p', { class: 'hint' }, 'Tests use these when they don’t have their own. A test’s own instructions (Page setup › test details) always win. The test won’t repeat them on the next page.')));
+        return;
+      }
       fieldBar.replaceChildren(f ? h('div', { class: 'row wrap' },
         h('strong', {}, fieldLabel(f.key)),
         h('label', { class: 'inline' }, 'Size', h('select', { onchange: e => { f.size = +e.target.value; draw(); } }, [[1.5, 'Small'], [2.1, 'Normal'], [2.8, 'Large'], [3.8, 'Very large']].map(([v, l]) => h('option', { value: v, selected: (f.size || 2.1) === v }, l)))),
@@ -168,7 +218,7 @@ export function openCoverEditor(existing, done = () => {}) {
         h('div', { class: 'stack' },
           h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Name'), h('input', { value: cv.name, oninput: e => cv.name = e.target.value })),
           h('span', { class: 'lbl' }, 'Add details to the page'),
-          h('div', { class: 'chips' }, FIELDS.map(([k, l]) => h('button', { class: 'chip' + (used.has(k) ? ' on' : ''), onclick: () => { cv.fields.push({ key: k, x: 40, y: 30 + (cv.fields.length % 10) * 5, size: k === 'title' ? 2.8 : 2.1, bold: true }); sel = cv.fields.length - 1; draw(); } }, '+ ' + l))),
+          h('div', { class: 'chips' }, FIELDS.map(([k, l]) => h('button', { class: 'chip' + (used.has(k) ? ' on' : ''), onclick: () => { if (BLOCK.has(k) && used.has(k)) return; cv.fields.push(BLOCK.has(k) ? { key: k, x: 8, y: 72, w: 84, size: 1.8, bold: false, heading: true } : { key: k, x: 40, y: 30 + (cv.fields.length % 10) * 5, size: k === 'title' ? 2.8 : 2.1, bold: true }); sel = cv.fields.length - 1; draw(); } }, '+ ' + l))),
           h('p', { class: 'hint' }, 'Then drag each one onto the blank line it belongs on. Leave out anything learners fill in themselves, like their name.'),
           fieldBar,
           h('button', { class: 'link small', onclick: () => { cv.src = ''; draw(); } }, 'Use a different file'))),
@@ -188,5 +238,5 @@ export function openCoverEditor(existing, done = () => {}) {
 export async function withCover(c) {
   const cv = typeof c.design?.cover === 'string' ? coverById(c.design.cover) : null;
   if (!cv) return c;
-  return { ...c, coverPng: await coverPng(cv, c), coverRatio: cv.h / cv.w };
+  return { ...c, coverPng: await coverPng(cv, c), coverRatio: cv.h / cv.w, coverInstr: coverHasInstructions(cv) };
 }

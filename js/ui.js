@@ -1,5 +1,11 @@
 // Small DOM helpers shared by every view.
 
+// replaceChildren/append print "null" for empty pieces; skip them instead, like h() does.
+for (const m of ['replaceChildren', 'append']) {
+  const orig = Element.prototype[m];
+  if (!orig.__kb) { const f = function (...k) { return orig.apply(this, k.flat(Infinity).filter(x => x != null && x !== false)); }; f.__kb = true; Element.prototype[m] = f; }
+}
+
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {

@@ -487,7 +487,7 @@ function brief(type, o) {
 Subject: ${o.subject || 'not specified'}
 Grade: ${o.grade || 'not specified'}
 Title or topic: ${o.topic || ''}
-${o.details ? 'ATP content to cover:\n' + o.details : ''}
+${o.details ? 'Content to cover (ATP and textbook):\n' + o.details : ''}
 ${o.sourceText ? 'Use this source material:\n---\n' + o.sourceText.slice(0, 40000) + '\n---' : ''}
 ${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`;
 }
@@ -527,7 +527,7 @@ export async function aiTestPlan(o) {
 Subject: ${o.subject || 'not specified'}
 Grade: ${o.grade || 'not specified'}
 Title or topic: ${o.topic || ''}
-${o.details ? 'ATP content to cover:\n' + o.details : ''}
+${o.details ? 'Content to cover (ATP and textbook):\n' + o.details : ''}
 ${o.sourceText ? 'Base it on this source material:\n---\n' + o.sourceText.slice(0, 30000) + '\n---' : ''}
 ${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`,
     tool: { name: 'save_plan', description: 'Save the plan of the paper', schema: PLAN_SCHEMA },
@@ -549,7 +549,7 @@ ${sec.visual && sec.visual !== 'none' ? `It needs a ${sec.visual}: put a "${sec.
 The whole paper, for context (do not repeat the other questions): ${all.map((x, i) => `Q${i + 1} ${x.title} (${x.marks})`).join('; ')}.
 Start with one "section" block titled “${sec.title}”, then the "question" blocks (numbered automatically, don't number them yourself). Every question has marks, a cognitive level cog (${lv}) and a full memo answer with ✓ per mark. The marks must add up to exactly ${sec.marks}.
 Subject: ${o.subject || 'not specified'}. Grade: ${o.grade || 'not specified'}. Topic: ${o.topic || ''}.
-${o.details ? 'ATP content:\n' + o.details : ''}
+${o.details ? 'Content to cover (ATP and textbook):\n' + o.details : ''}
 ${o.sourceText ? 'Source material:\n---\n' + o.sourceText.slice(0, 20000) + '\n---' : ''}
 ${o.extra ? 'Teacher’s instructions: ' + o.extra : ''}`;
   let last = null;

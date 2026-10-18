@@ -1,5 +1,6 @@
 // Create: make tests, worksheets, notes, slides, rubrics and flashcards, then design them
 // with a live A4 preview.
+import { siyavulaFor, chaptersOf } from '../siyavula.js';
 import { state, onChange, saveCreation, deleteCreation, creationById, subjectById, subjectLabel, atpById, classLabel } from '../state.js';
 import { h, icon, toast, modal, confirmBox, busy, dropZone, esc } from '../ui.js';
 import { aiCreate, aiRevise, aiReady, aiUnavailableReason, aiDiagram, aiCreateTest, aiTestSection } from '../ai.js';
@@ -175,7 +176,7 @@ async function buildWithAi(type, o) {
   const subj = subjectById(o.subjectId);
   const atp = o.atpId ? atpById(o.atpId) : null;
   const marks = ['test', 'worksheet'].includes(type) ? (o.marks || (type === 'test' ? 50 : 20)) : 0;
-  const brief = { subject: subj?.name, grade: c.grade, language: c.language, topic: o.title || o.topic || atp?.topic || '', details: atp?.details || '', sourceText: o.sourceText || '', extra: o.extra || '',
+  const brief = { subject: subj?.name, grade: c.grade, language: c.language, topic: o.topic || o.title || atp?.topic || '', details: o.details ?? atp?.details ?? '', sourceText: o.sourceText || '', extra: o.extra || '',
     marks, time: type === 'test' ? (o.time || 60) : 0, count: o.count || { worksheet: 8, slides: 10, rubric: 5, cards: 16 }[type] || 0, length: o.length || 'medium', levelsCount: o.levelsCount || 4, levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets };
   const r = type === 'test' ? await aiCreateTest(brief) : await aiCreate(type, brief);
   applyAi(c, r);
@@ -202,12 +203,41 @@ function newDialog(type, pre = {}) {
     const items = state.atp.filter(a => a.subjectId === f.subjectId);
     const now = tw && items.find(a => a.term === tw.term && tw.week >= a.week && tw.week <= (a.weekEnd || a.week));
     f.atpId = now?.id || items[0]?.id || '';
+    // Tests and worksheets can cover several topics: start with this week's ATP topic and its textbook chapter.
+    f.atpIds = new Set(now ? [now.id] : []);
+    const a0 = now, sv = a0 && siyavulaFor(subjectById(f.subjectId), a0.topic, a0.details || '');
+    f.chapters = new Set(sv ? [sv.path] : []);
   };
+  const MULTI = ['test', 'worksheet'].includes(type);
   pickAtp();
   if (pre.extra) f.source = 'none';
   const body = h('div', {});
   const m = modal(`New ${t.label.toLowerCase()}`, body, { wide: true });
   const num = (label, key, min, max) => h('label', { class: 'field' }, h('span', { class: 'lbl' }, label), h('input', { type: 'number', min, max, value: f[key], oninput: e => f[key] = +e.target.value }));
+  // Tick as many ATP topics and Siyavula chapters as the test should cover.
+  const topicPicker = atps => {
+    const subj = subjectById(f.subjectId);
+    const chs = chaptersOf(subj && { ...subj, grade: f.grade || subj.grade }).filter(() => state.settings.edition !== 'uni');
+    const count = h('span', { class: 'muted small' });
+    const tell = () => { const n = f.atpIds.size + f.chapters.size; count.textContent = n ? `${n} chosen` : 'Nothing chosen yet'; };
+    const tick = (set, key, label, sub) => h('label', { class: 'tp-item' },
+      h('input', { type: 'checkbox', checked: set.has(key), onchange: e => { e.target.checked ? set.add(key) : set.delete(key); tell(); } }),
+      h('span', {}, label, sub ? h('small', { class: 'muted' }, sub) : null));
+    const termBtn = term => h('button', { type: 'button', class: 'chip', onclick: () => { const ids = atps.filter(a => a.term === term).map(a => a.id); const all = ids.every(id => f.atpIds.has(id)); ids.forEach(id => all ? f.atpIds.delete(id) : f.atpIds.add(id)); draw(); } }, `Term ${term}`);
+    const terms = [1, 2, 3, 4].filter(t => atps.some(a => a.term === t));
+    tell();
+    return h('div', { class: 'field topic-pick' },
+      h('div', { class: 'row between' }, h('span', { class: 'lbl' }, 'Topics to cover'), count),
+      h('div', { class: 'tp-cols' },
+        h('div', { class: 'tp-box' },
+          h('div', { class: 'tp-head' }, h('b', {}, 'ATP'), terms.length > 1 ? h('span', { class: 'row wrap', style: { gap: '.3rem' } }, h('span', { class: 'muted small' }, 'Tick a whole term:'), terms.map(termBtn)) : null),
+          atps.length ? h('div', { class: 'tp-list' }, terms.map(term => h('div', {}, h('div', { class: 'tp-term' }, `Term ${term}`),
+            atps.filter(a => a.term === term).map(a => tick(f.atpIds, a.id, a.topic, `Wk ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''}`)))))
+          : h('p', { class: 'muted small' }, f.subjectId ? 'This subject has no ATP yet. Upload it on the Subjects page.' : 'Choose a subject to pick from its ATP.')),
+        chs.length ? h('div', { class: 'tp-box' },
+          h('div', { class: 'tp-head' }, h('b', {}, 'Siyavula textbook')),
+          h('div', { class: 'tp-list' }, chs.map(c => tick(f.chapters, c[2], `Ch ${c[0]}: ${c[1]}`, null)))) : null));
+  };
   const draw = () => {
     const atps = state.atp.filter(a => a.subjectId === f.subjectId);
     const srcText = h('textarea', { rows: 5, placeholder: 'Paste notes, a textbook section or a memo. Or upload a file below.', oninput: e => f.text = e.target.value }, f.text);
@@ -227,7 +257,8 @@ function newDialog(type, pre = {}) {
         h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Grade'), h('input', { value: f.grade, placeholder: 'e.g. 9', oninput: e => f.grade = e.target.value.trim() })),
         h('label', { class: 'field', style: { gridColumn: '1 / -1' } }, h('span', { class: 'lbl' }, 'Title or topic'), h('input', { value: f.title, placeholder: type === 'test' ? 'e.g. Term 4 controlled test: Statistics' : 'e.g. Photosynthesis', oninput: e => f.title = e.target.value }))),
       h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'What should it be based on?'),
-        h('div', { class: 'seg', role: 'radiogroup' }, [['atp', 'An ATP topic'], ['text', 'My notes or a file'], ['none', 'Just the title / my description']].map(([k, l]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(f.source === k), onclick: () => { f.source = k; draw(); } }, l)))),
+        h('div', { class: 'seg', role: 'radiogroup' }, [['atp', MULTI ? 'ATP and textbook topics' : 'An ATP topic'], ['text', 'My notes or a file'], ['none', 'Just the title / my description']].map(([k, l]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(f.source === k), onclick: () => { f.source = k; draw(); } }, l)))),
+      f.source === 'atp' && MULTI ? topicPicker(atps) :
       f.source === 'atp' ? (atps.length ? h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'ATP topic'), h('select', { onchange: e => f.atpId = e.target.value },
         [1, 2, 3, 4].map(term => { const list = atps.filter(a => a.term === term); return list.length ? h('optgroup', { label: `Term ${term}` }, list.map(a => h('option', { value: a.id, selected: a.id === f.atpId }, `Wk ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''}: ${a.topic}`))) : null; })))
         : h('p', { class: 'muted small' }, f.subjectId ? 'This subject has no ATP yet. Upload it on the Subjects page, or use your own notes.' : 'Choose a subject to pick from its ATP.')) : null,
@@ -245,11 +276,26 @@ function newDialog(type, pre = {}) {
     );
   };
   const start = async (useAi, btn) => {
-    const atp = f.source === 'atp' ? atpById(f.atpId) : null;
-    const opts = { subjectId: f.subjectId, grade: f.grade, title: f.title.trim(), atpId: atp?.id || '', sourceText: f.source === 'text' ? f.text : '' };
+    const multi = f.source === 'atp' && MULTI;
+    const picked = multi ? state.atp.filter(a => f.atpIds.has(a.id)).sort((a, b) => a.term - b.term || a.week - b.week) : [];
+    const subj = subjectById(f.subjectId);
+    const chs = multi ? chaptersOf(subj && { ...subj, grade: f.grade || subj.grade }).filter(c => f.chapters.has(c[2])) : [];
+    if (useAi && multi && !picked.length && !chs.length && !f.title.trim()) { toast('Tick at least one topic, or type a title.', 'warn'); return; }
+    const atp = multi ? picked[0] || null : f.source === 'atp' ? atpById(f.atpId) : null;
+    const names = [...picked.map(a => a.topic), ...chs.filter(c => !picked.some(a => siyavulaFor(subj, a.topic, a.details || '')?.path === c[2])).map(c => c[1])];
+    const autoTitle = names.length > 3 ? `${names.slice(0, 2).join('; ')} and ${names.length - 2} more` : names.length > 1 ? names.slice(0, -1).join('; ') + ' and ' + names.at(-1) : names[0] || '';
+    const opts = { subjectId: f.subjectId, grade: f.grade, title: f.title.trim() || (multi ? autoTitle : ''), atpId: atp?.id || '', sourceText: f.source === 'text' ? f.text : '' };
+    if (multi && (picked.length + chs.length > 1 || chs.length)) {
+      opts.topic = names.join('; ');
+      opts.details = [
+        ...picked.map(a => `ATP Term ${a.term} week ${a.week}${a.weekEnd && a.weekEnd !== a.week ? '–' + a.weekEnd : ''}: ${a.topic}${a.details ? ' — ' + String(a.details).slice(0, 1500) : ''}`),
+        ...chs.map(c => `Siyavula textbook, Chapter ${c[0]}: ${c[1]}. Sections: ${c[3].split(' ; ').filter(x => x && x !== '(none)').join('; ')}`),
+      ].join('\n');
+      opts.multi = names.length;
+    }
     if (useAi) {
       const done = busy(btn, 'Writing… about a minute');
-      try { await buildWithAi(type, { ...opts, extra: f.extra, marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language }); m.close(); }
+      try { await buildWithAi(type, { ...opts, extra: [opts.multi > 1 ? `Cover all ${opts.multi} topics listed, spreading the marks fairly across them.` : '', f.extra].filter(Boolean).join(' '), marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language }); m.close(); }
       catch (e) { toast(e.message, 'error'); } finally { done(); }
       return;
     }

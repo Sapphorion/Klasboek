@@ -5,7 +5,7 @@ import { esc } from '../ui.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
 import { checkFor, trapHtml } from '../aicheck.js';
 import { graphSvg } from './graph.js';
-import { coverById, coverHtml } from './covers.js';
+import { coverById, coverHtml, coverHasInstructions } from './covers.js';
 
 export const THEMES = [
   { id: 'classic', label: 'Classic', note: 'Formal, for tests and exams' },
@@ -58,7 +58,7 @@ export function themeCss() {
 .paper .details{width:100%;margin:.2em 0 .9em}
 .paper .ucover{margin:-56px -58px 0;position:relative;container-type:inline-size;background:#fff}
 .paper .ucover img{width:100%;display:block}
-.paper .uc-f{position:absolute;transform:translateY(-50%);white-space:nowrap;color:#111;font-family:Arial,Helvetica,sans-serif;line-height:1}
+.paper .uc-f{position:absolute;transform:translateY(-50%);white-space:nowrap;color:#111;font-family:Arial,Helvetica,sans-serif;line-height:1}.paper .uc-block{white-space:normal;transform:none;line-height:1.35}.paper .uc-block .uc-h{display:block;margin-bottom:.3em}.paper .uc-block ol{margin:0;padding-left:1.6em}.paper .uc-block li{margin-bottom:.2em}
 .paper .details th{background:#f1f4f2;width:16%;font-size:.9em}
 .paper .details td{width:17%}
 .paper figcaption{font-size:.85em;color:#4f5856;margin-top:.3em}
@@ -178,7 +178,7 @@ function renderDoc(c) {
       h += `<table class="details"><tr><th>Subject</th><td>${esc(subj?.name || '')}</td><th>Grade</th><td>${esc(c.grade || '')}</td><th>Date</th><td>${c.meta?.date ? esc(new Date(c.meta.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })) : ''}</td></tr><tr><th>Time</th><td>${c.meta?.time ? c.meta.time + ' min' : ''}</td><th>Marks</th><td>${total}</td><th>Teacher</th><td>${esc(state.settings.teacherName || '')}</td></tr></table>`;
     }
     if (d.header && assess) h += learnerBox(total);
-    if (c.type === 'test' && (c.meta?.instructions || []).length) h += `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>`;
+    if (c.type === 'test' && !coverHasInstructions(upCover) && (c.meta?.instructions || []).length) h += `<div class="instr"><h3>Instructions</h3><ol>${c.meta.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol></div>`;
   }
   const chk = assess ? checkFor(c) : null;
   if (chk?.on) h += `<div>${trapHtml(chk)}</div>`;

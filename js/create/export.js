@@ -76,7 +76,7 @@ export async function exportCreationDocx(c) {
       if (subLine(c)) kids.push(para(subLine(c), { color: '555555', after: 120 }));
       if (c.type === 'test') kids.push(para(`${c.meta?.time ? `Time: ${c.meta.time} minutes      ` : ''}Total: ${total} marks`, { bold: true, after: 160 }));
       if (c.design?.header && assess) kids.push(learner(total), para('', { after: 120 }));
-      if (c.type === 'test' && ins.length) kids.push(table([9360], [row([cell([para('Instructions', { bold: true }), ...ins.map((t, i) => para(`${i + 1}.  ${t}`))], 9360)])]), para(''));
+      if (c.type === 'test' && ins.length && !c.coverInstr) kids.push(table([9360], [row([cell([para('Instructions', { bold: true }), ...ins.map((t, i) => para(`${i + 1}.  ${t}`))], 9360)])]), para(''));
     }
     const chk = assess ? checkFor(c) : null;
     if (chk?.on) kids.push(new D.Paragraph({ children: [trapRun(D, chk)] }));
