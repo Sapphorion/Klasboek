@@ -81,22 +81,6 @@ export function repair(x, key = '') {
 let progressFn = null;
 export function onAiProgress(fn) { progressFn = fn; return () => { if (progressFn === fn) progressFn = null; }; }
 
-// What we send back to Claude when asking again: only complete pieces. A thinking block without
-// its text or signature is refused by the API ("each thinking block must contain thinking").
-function resendable(content) {
-  const ok = (content || []).filter(b => {
-    if (b.type === 'thinking') return !!(b.thinking && b.signature);
-    if (b.type === 'redacted_thinking') return !!b.data;
-    if (b.type === 'text') return !!(b.text && b.text.trim());
-    return true;
-  });
-  // If any thinking is incomplete, drop all of it (allowed) rather than send a broken piece.
-  const broken = (content || []).some(b => b.type === 'thinking' && !(b.thinking && b.signature));
-  // (and the tool call with it, since a tool result must follow the thinking that led to it)
-  const out = broken ? ok.filter(b => !['thinking', 'redacted_thinking', 'tool_use'].includes(b.type)) : ok;
-  return out.length ? out : [{ type: 'text', text: '…' }];
-}
-
 async function call({ system, content, tool, maxTokens = 8000 }) {
   const reason = aiUnavailableReason();
   if (reason) throw new Error(reason);
@@ -104,10 +88,18 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
   // and the system prompt tells Claude to answer through it. One retry if it doesn't.
   if (isUni()) { system = uniPrompt(system) + UNI_NOTE; content = typeof content === 'string' ? uniPrompt(content) : (content || []).map(p => p.type === 'text' ? { ...p, text: uniPrompt(p.text) } : p); }
   const sys = `${system}\n\nAlways answer by calling the ${tool.name} tool exactly once with the complete result. Do not write any other text.`;
-  const messages = [{ role: 'user', content }];
-  let shapeRetry = false;
+  // Every try is a fresh, single question. Retries add a note rather than sending Claude's earlier
+  // reply back: that reply can hold "thinking" pieces the API refuses to take back.
+  const withNote = note => !note ? content : typeof content === 'string' ? content + '\n\n' + note : [...content, { type: 'text', text: note }];
+  let note = '', shapeRetry = false;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const j = await post({ system: sys, messages, tool, maxTokens });
+    let j;
+    try { j = await post({ system: sys, messages: [{ role: 'user', content: withNote(note) }], tool, maxTokens }); }
+    catch (e) {
+      // Anything about thinking blocks is our side, not the teacher's: just ask again, cleanly.
+      if (/thinking/i.test(e.message) && attempt < 2) { note = note || `Answer by calling the ${tool.name} tool.`; continue; }
+      throw e;
+    }
     const block = j.content?.find(b => b.type === 'tool_use' && b.name === tool.name);
     if (j.stop_reason === 'max_tokens') throw new Error('The answer was too long and got cut off. Try fewer marks, or split it into two shorter pieces (e.g. Section A and Section B).');
     let raw = block && block.input && Object.keys(block.input).length ? block.input : null;
@@ -118,17 +110,12 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
         if (!(e instanceof ShapeError) || shapeRetry) throw new Error('The AI sent its answer in a shape Klasboek couldn’t read. Please tap the button again; it usually works on the second try.');
         shapeRetry = true;
         progressFn?.('Tidying the answer…'); window.dispatchEvent(new CustomEvent('ai-progress', { detail: 'Tidying the answer…' }));
-        const sent = resendable(j.content);
-        const id = sent.some(b => b.type === 'tool_use' && b.id === block?.id) ? block.id : null;
-        messages.push({ role: 'assistant', content: sent },
-          id ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: `The "${e.message}" field arrived as a text string instead of a JSON array, so it couldn't be read. Call ${tool.name} again with the complete result, with every list as a real JSON array (not a string). Keep the same content.` }] }
-             : { role: 'user', content: `Please call ${tool.name} again with every list as a real JSON array, not a string.` });
+        note = `Important: when you call ${tool.name}, send every list (especially "${e.message}") as a real JSON array, not as a text string.`;
         continue;
       }
     }
     if (attempt >= 1) break;
-    messages.push({ role: 'assistant', content: resendable(j.content) },
-      { role: 'user', content: `Please give the complete result by calling the ${tool.name} tool now.` });
+    note = `Important: give the complete result by calling the ${tool.name} tool. Do not answer in plain text.`;
   }
   throw new Error('Claude didn’t send anything back that Klasboek could use. Please try again.');
 }

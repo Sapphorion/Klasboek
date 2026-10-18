@@ -80,11 +80,24 @@ installBtn.hidden = isInstalled();
 installBtn.addEventListener('click', openInstall);
 onInstallChange(() => { installBtn.hidden = isInstalled(); });
 
+// Fetch the newest Klasboek straight away and reload (instead of waiting for the next start).
+async function updateNow() {
+  if (!navigator.onLine) { toast('You need internet to get the newest version.', 'warn'); return; }
+  const el = document.getElementById('app-version'); if (el) el.textContent = 'Updating…';
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    await reg?.update();
+    const keys = await caches.keys(); await Promise.all(keys.filter(k => k.startsWith('klasboek-v')).map(k => caches.delete(k)));
+    await reg?.unregister();
+  } catch {}
+  location.reload();
+}
+
 async function showVersion() {
   try {
     const v = (await caches.keys()).filter(k => k.startsWith('klasboek-v')).sort((a, b) => +b.slice(10) - +a.slice(10))[0];
     if (!v) return;
-    const el = document.getElementById('app-version') || document.querySelector('.rail-foot')?.appendChild(h('span', { id: 'app-version', class: 'app-version' }));
+    const el = document.getElementById('app-version') || document.querySelector('.rail-foot')?.appendChild(h('button', { id: 'app-version', class: 'app-version', title: 'Check for a newer version', onclick: updateNow }));
     if (el) el.textContent = 'Version ' + v.slice(10);
   } catch {}
 }
