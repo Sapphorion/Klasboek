@@ -81,6 +81,22 @@ export function repair(x, key = '') {
 let progressFn = null;
 export function onAiProgress(fn) { progressFn = fn; return () => { if (progressFn === fn) progressFn = null; }; }
 
+// What we send back to Claude when asking again: only complete pieces. A thinking block without
+// its text or signature is refused by the API ("each thinking block must contain thinking").
+function resendable(content) {
+  const ok = (content || []).filter(b => {
+    if (b.type === 'thinking') return !!(b.thinking && b.signature);
+    if (b.type === 'redacted_thinking') return !!b.data;
+    if (b.type === 'text') return !!(b.text && b.text.trim());
+    return true;
+  });
+  // If any thinking is incomplete, drop all of it (allowed) rather than send a broken piece.
+  const broken = (content || []).some(b => b.type === 'thinking' && !(b.thinking && b.signature));
+  // (and the tool call with it, since a tool result must follow the thinking that led to it)
+  const out = broken ? ok.filter(b => !['thinking', 'redacted_thinking', 'tool_use'].includes(b.type)) : ok;
+  return out.length ? out : [{ type: 'text', text: '…' }];
+}
+
 async function call({ system, content, tool, maxTokens = 8000 }) {
   const reason = aiUnavailableReason();
   if (reason) throw new Error(reason);
@@ -102,15 +118,16 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
         if (!(e instanceof ShapeError) || shapeRetry) throw new Error('The AI sent its answer in a shape Klasboek couldn’t read. Please tap the button again; it usually works on the second try.');
         shapeRetry = true;
         progressFn?.('Tidying the answer…'); window.dispatchEvent(new CustomEvent('ai-progress', { detail: 'Tidying the answer…' }));
-        const id = block?.id;
-        messages.push({ role: 'assistant', content: j.content },
+        const sent = resendable(j.content);
+        const id = sent.some(b => b.type === 'tool_use' && b.id === block?.id) ? block.id : null;
+        messages.push({ role: 'assistant', content: sent },
           id ? { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: `The "${e.message}" field arrived as a text string instead of a JSON array, so it couldn't be read. Call ${tool.name} again with the complete result, with every list as a real JSON array (not a string). Keep the same content.` }] }
              : { role: 'user', content: `Please call ${tool.name} again with every list as a real JSON array, not a string.` });
         continue;
       }
     }
     if (attempt >= 1) break;
-    messages.push({ role: 'assistant', content: j.content?.length ? j.content : [{ type: 'text', text: '…' }] },
+    messages.push({ role: 'assistant', content: resendable(j.content) },
       { role: 'user', content: `Please give the complete result by calling the ${tool.name} tool now.` });
   }
   throw new Error('Claude didn’t send anything back that Klasboek could use. Please try again.');
@@ -198,6 +215,9 @@ async function readStream(body) {
         const b = out.content[ev.index];
         if (ev.delta.type === 'input_json_delta') { json[ev.index] = (json[ev.index] || '') + ev.delta.partial_json; chars += ev.delta.partial_json.length; tick(); }
         else if (ev.delta.type === 'text_delta' && b) { b.text = (b.text || '') + ev.delta.text; chars += ev.delta.text.length; tick(); }
+        // Newer models think first; keep it whole (with its signature) so a retry can send it back.
+        else if (ev.delta.type === 'thinking_delta' && b) { b.thinking = (b.thinking || '') + ev.delta.thinking; if (!chars) { progressFn?.('Thinking…'); } }
+        else if (ev.delta.type === 'signature_delta' && b) b.signature = (b.signature || '') + ev.delta.signature;
       } else if (ev.type === 'message_delta') { if (ev.delta?.stop_reason) out.stop_reason = ev.delta.stop_reason; }
       else if (ev.type === 'error') throw new Error(ev.error?.type === 'overloaded_error' ? 'Claude is busy right now. Try again in a minute.' : (ev.error?.message || 'Claude stopped with an error. Try again.'));
     }
