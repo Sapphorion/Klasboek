@@ -7,13 +7,15 @@ import { today, fmtLong } from '../dates.js';
 import { exportModerationDocx, printModeration } from '../moderation-export.js';
 import { noticesTab, noticeDetail } from './notices.js';
 import { noticeById } from '../state.js';
+import { sheetsTab, sheetDetail, isSheet } from './markform.js';
 
 let tab = 'notices';
 
 export function renderModeration(root, [id, sub]) {
-  if (id === 'marks' || id === 'notices') tab = id;
+  if (id === 'marks' || id === 'notices' || id === 'sheets') tab = id;
   const draw = () => root.replaceChildren(
     id === 'notice' && noticeById(sub) ? noticeDetail(noticeById(sub))
+      : id && isSheet(moderationById(id)) ? sheetDetail(moderationById(id))
       : id && moderationById(id) ? detail(moderationById(id))
       : list());
   const off = onChange(w => { if (['moderations', 'settings', 'subjects', 'notices', 'materials'].includes(w)) draw(); });
@@ -21,15 +23,19 @@ export function renderModeration(root, [id, sub]) {
   return off;
 }
 
+const samples = () => state.moderations.filter(m => !isSheet(m));
+
 // ---------- List ----------
 function list() {
   const open = state.notices.filter(n => !n.submitted).length;
   const page = h('div', { class: 'page' }, h('header', { class: 'page-head' }, h('h1', {}, 'Moderation'),
-    h('p', { class: 'muted' }, 'Keep track of moderation notices and deadlines, and moderate marks: upload a marksheet, get a sample of scripts across the achievement levels, and export a moderation report.')));
+    h('p', { class: 'muted' }, 'Keep track of moderation notices and deadlines, moderate marks (a sample of scripts across the achievement levels, with a report), and fill in red, green, orange and purple moderation mark sheets.')));
   page.append(h('div', { class: 'tabs page-tabs', role: 'tablist' },
     h('a', { role: 'tab', href: '#moderation/notices', 'aria-selected': String(tab === 'notices') }, 'Notices and deadlines', open ? h('span', { class: 'count' }, open) : null),
-    h('a', { role: 'tab', href: '#moderation/marks', 'aria-selected': String(tab === 'marks') }, 'Marksheet moderation', state.moderations.length ? h('span', { class: 'count' }, state.moderations.length) : null)));
+    h('a', { role: 'tab', href: '#moderation/marks', 'aria-selected': String(tab === 'marks') }, 'Marksheet moderation', samples().length ? h('span', { class: 'count' }, samples().length) : null),
+    h('a', { role: 'tab', href: '#moderation/sheets', 'aria-selected': String(tab === 'sheets') }, 'Moderation mark sheets', state.moderations.filter(isSheet).length ? h('span', { class: 'count' }, state.moderations.filter(isSheet).length) : null)));
   if (tab === 'notices') { page.append(noticesTab()); return page; }
+  if (tab === 'sheets') return sheetsTab(page);
   return marksTab(page);
 }
 
@@ -52,7 +58,7 @@ function marksTab(page) {
       h('p', { class: 'muted small' }, 'Use the numbers your school or district policy sets. The highest and lowest marks are always in the sample.')),
   ));
 
-  const mods = [...state.moderations].sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+  const mods = samples().sort((a, b) => (b.created || '').localeCompare(a.created || ''));
   page.append(h('h2', {}, 'Your marksheet moderations'));
   if (!mods.length) page.append(h('p', { class: 'empty' }, 'None yet. Upload a marksheet to start one.'));
   else page.append(h('ul', { class: 'mod-list' }, mods.map(m => {
