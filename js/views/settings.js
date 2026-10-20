@@ -1,4 +1,5 @@
 import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '../state.js';
+import { schoolSection } from './schoolui.js';
 import { openInstall } from './install.js';
 import { accountSection } from './account.js';
 import { yearsSection } from './yearui.js';
@@ -32,6 +33,7 @@ function view() {
   page.append(lookSection());
   page.append(displaySection());
   page.append(accountSection());
+  if (state.settings.edition !== 'uni') page.append(schoolSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
       field('Klasboek is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation and lab stock.'); } },

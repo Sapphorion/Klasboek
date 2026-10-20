@@ -2,6 +2,7 @@
 // teacher's red marks, then green, orange and (if wanted) purple moderation. Print it in colour, or
 // download it for Word or Excel.
 import { state, saveModeration, deleteModeration, saveSettings, subjectById, subjectLabel } from '../state.js';
+import { markBookButton } from './schoolui.js';
 import { h, icon, toast, modal, confirmBox, dropZone, esc, busy, download, loadScript, safeName } from '../ui.js';
 import { readMarksheet, toNumber } from '../importers.js';
 import { selectSample } from '../moderation-core.js';
@@ -35,7 +36,7 @@ export function sheetsTab(page) {
       try { const sheet = await readMarksheet(file); status.replaceChildren(); setupSheet(sheet, file.name); }
       catch (e) { status.replaceChildren(h('p', { class: 'error' }, e.message)); }
     } }),
-    h('div', { class: 'row' }, h('button', { class: 'btn ghost sm', onclick: () => setupSheet(null, '') }, icon('pen', 16), 'Type or paste the names instead')),
+    h('div', { class: 'row wrap' }, h('button', { class: 'btn ghost sm', onclick: () => setupSheet(null, '') }, icon('pen', 16), 'Type or paste the names instead'), markBookButton()),
     status));
   const list = state.moderations.filter(isSheet).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
   page.append(h('h2', {}, 'Your moderation mark sheets'));

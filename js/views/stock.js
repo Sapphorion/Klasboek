@@ -1,6 +1,8 @@
 // Lab stock: chemicals, glassware, equipment and consumables for Physical and Natural Sciences.
 // Tracks what's on hand, where it is, when it was bought, when it expires and when to reorder.
 import { state, onChange, saveStock, deleteStock, stockById } from '../state.js';
+import { connected } from '../school.js';
+import { schoolStock } from './schoolui.js';
 import { h, icon, toast, confirmBox, modal, download, loadScript, busy, dropZone } from '../ui.js';
 import { today, fmt, parse } from '../dates.js';
 import { openPrint } from '../exporters.js';
@@ -48,8 +50,10 @@ export function stockAlerts() {
 
 let filter = 'all', area = '', cat = '', query = '', sortBy = 'name', rootEl = null;
 
-export function renderStock(root) {
+let sub = '';
+export function renderStock(root, rest = []) {
   rootEl = root;
+  sub = rest[0] || '';
   const off = onChange(w => { if (w === 'stock') rerender(); });
   rerender();
   return () => { off(); rootEl = null; };
@@ -78,8 +82,15 @@ function shown() {
 }
 
 function view() {
+  // Connected to Skool Huis: the school's shared inventory, unless the teacher opens their own list.
+  if (connected() && sub !== 'mine') {
+    const page = h('div', { class: 'page stock-page' }, h('header', { class: 'page-head' }, h('h1', {}, 'School inventory')));
+    schoolStock(page, rerender);
+    return page;
+  }
   const al = stockAlerts();
   const page = h('div', { class: 'page stock-page' });
+  if (connected()) page.append(h('p', {}, h('a', { href: '#stock', class: 'link' }, '‹ School inventory')));
   page.append(h('header', { class: 'page-head' }, h('h1', {}, 'Lab stock'),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn', onclick: () => editItem() }, icon('plus'), 'Add item'),

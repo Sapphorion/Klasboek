@@ -1421,3 +1421,14 @@ dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: gri
 :root[data-theme="night"] #toast[data-kind="warn"] .toast-ic { background: #362D19; }
 :root[data-theme="night"] .toast-x:hover { background: #232624; }
 /* night:auto end */
+
+/* Connect to my school (Skool Huis) */
+.tabs-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
+.school-items { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; max-width: 50rem; }
+.school-items li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; padding: .75rem 1rem; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-m); }
+.si-main { display: grid; gap: .15rem; min-width: 0; flex: 1 1 14rem; }
+.si-count { display: grid; gap: .35rem; justify-items: end; }
+.si-count .qty-in { width: 6.5rem; }
+.school-banner { margin-top: 1rem; padding: .9rem 1rem; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius-m); background: var(--sheet); display: grid; gap: .5rem; justify-items: start; max-width: 50rem; }
+.pick-list { list-style: none; padding: 0; display: grid; gap: .4rem; }
+.pick-list .btn { width: 100%; justify-content: flex-start; text-align: left; }

@@ -23,6 +23,7 @@ import { currentTheme, setLook } from './views/display.js';
 import { openInstall, isInstalled, onInstallChange } from './views/install.js';
 import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
+import { pullIfDue } from './school.js';
 
 const ROUTES = [
   { id: 'today', only: 'school', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
@@ -145,6 +146,11 @@ async function start() {
     navigator.onLine ? go() : window.addEventListener('online', go, { once: true });
   }
   syncBadge(); onSync(syncBadge); onAuth(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
+  // Connected to the school's Skool Huis? Bring in the term dates and school calendar every few hours.
+  const schoolPull = () => { if (!isUni()) pullIfDue().then(r => { if (r?.events || r?.terms) toast(`School calendar updated${r.terms ? ', with new term dates' : ''}.`); }); };
+  schoolPull();
+  window.addEventListener('online', schoolPull);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) schoolPull(); });
   if (connected()) startSync(); else window.addEventListener('klasboek-connected', () => startSync());
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // When a new version takes over, reload once so the teacher sees it straight away.

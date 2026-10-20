@@ -100,5 +100,5 @@ export async function clearAll() {
   const keepKey = (await db.get('kv', 'settings'))?.apiKey || '';
   for (const s of STORES) await db.clear(s);
   if (keepKey) await db.put('kv', { apiKey: keepKey }, 'settings');
-  try { localStorage.removeItem('rollcall.v1'); } catch {}
+  try { localStorage.removeItem('rollcall.v1'); localStorage.removeItem('klasboek.school.v1'); } catch {}
 }

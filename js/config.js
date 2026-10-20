@@ -13,3 +13,12 @@ export const FIREBASE_CONFIG = {
   messagingSenderId: '159262207752',
   appId: '1:159262207752:web:0702978928b7f8332946bd',
 };
+
+// Skool Huis, the school's own system (learners, calendar, mark book, inventory).
+// Public values: the publishable key only allows what the school database's
+// security rules allow, and every teacher signs in with their own account.
+export const SKOOLHUIS = {
+  url: 'https://eccijbibnfgmsdyfqfxp.supabase.co',
+  key: 'sb_publishable_JYBGp69pc7QjcDYZ05J3Dg_rWk4jj7C',
+  app: 'https://skoolhuis.netlify.app',
+};
