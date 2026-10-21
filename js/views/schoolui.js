@@ -4,7 +4,7 @@ import { state, saveModeration, deleteStock } from '../state.js';
 import { h, icon, toast, modal, busy, confirmBox } from '../ui.js';
 import { today } from '../dates.js';
 import {
-  school, connect, disconnect, chooseSchool, pullSchool, markSheets, markSheet, inventory, adjustStock, saveItem, toSchoolItem, schoolLink,
+  school, connect, disconnect, chooseSchool, pullSchool, inSkoolHuis, markSheets, markSheet, inventory, adjustStock, saveItem, toSchoolItem, schoolLink,
 } from '../school.js';
 import { areaOf } from './stock.js';
 
@@ -47,13 +47,15 @@ export function schoolSection() {
       finally { done(); }
     } }, icon('refresh', 16), 'Bring in now');
     sec.replaceChildren(h('h2', {}, 'Your school'),
-      h('p', {}, 'Connected to ', h('strong', {}, s.school.name), ` as ${s.email} (${s.role === 'admin' ? 'office' : 'teacher'}).`),
+      h('p', {}, inSkoolHuis ? 'Linked through Skool Huis to ' : 'Connected to ', h('strong', {}, s.school.name), ` as ${s.email} (${s.role === 'admin' ? 'office' : 'teacher'}).`),
+      inSkoolHuis ? h('p', { class: 'muted small' }, 'You opened Klasboek from Skool Huis, so it uses your Skool Huis sign-in. Your planner is kept separately for your account, so colleagues on this computer don’t see it.') : null,
       s.schools.length > 1 ? field('School', h('select', { onchange: e => { chooseSchool(e.target.value); draw(); } },
         s.schools.map(x => h('option', { value: x.id, selected: x.id === s.school.id }, x.name)))) : null,
       h('p', { class: 'muted small' }, `Term dates and the school calendar last brought in: ${when(s.pulledAt)}. It happens by itself every few hours while Klasboek is open.`),
       h('div', { class: 'row wrap' }, pullBtn,
-        h('a', { class: 'btn ghost sm', href: schoolLink(), target: '_blank', rel: 'noopener' }, icon('external', 16), 'Open Skool Huis'),
-        h('button', { class: 'btn ghost sm', onclick: async () => {
+        inSkoolHuis ? h('a', { class: 'btn ghost sm', href: schoolLink() }, icon('left', 16), 'Back to Skool Huis')
+          : h('a', { class: 'btn ghost sm', href: schoolLink(), target: '_blank', rel: 'noopener' }, icon('external', 16), 'Open Skool Huis'),
+        inSkoolHuis ? null : h('button', { class: 'btn ghost sm', onclick: async () => {
           if (!await confirmBox('Disconnect this device from your school? The school calendar events are removed from Klasboek; everything else stays.', 'Disconnect')) return;
           await disconnect(); toast('Disconnected.'); draw();
         } }, 'Disconnect')));
@@ -74,7 +76,7 @@ async function pickFromMarkBook(onMade) {
   let sheets;
   try { sheets = await markSheets(); } catch (e) { body.replaceChildren(h('p', { class: 'error' }, e.message)); return; }
   if (!sheets?.length) { body.replaceChildren(h('p', {}, 'You have no mark sheets in Skool Huis yet. Set one up there under Mark book.')); return; }
-  body.replaceChildren(h('p', { class: 'muted' }, 'Choose the subject and class, then the task. Its captured marks become the red column.'),
+  body.replaceChildren(h('p', { class: 'muted' }, 'Choose the subject and class, then the task. Its captured marks fill the red column, and any green, orange and purple moderation marks captured in Skool Huis come along too.'),
     h('ul', { class: 'pick-list' }, sheets.map(s => h('li', {}, h('button', { class: 'btn ghost', onclick: () => pickTask(s) },
       h('strong', {}, `${s.subject} · ${s.class}`), h('span', { class: 'muted small' }, ` ${s.learners} learners · ${s.captured} marks captured`))))));
 
@@ -95,10 +97,10 @@ async function pickFromMarkBook(onMade) {
       || state.subjects.find(x => sh.subject.toLowerCase().includes(x.name.toLowerCase()));
     const rows = sh.learners.map(l => {
       const m = sh.marks.find(x => x.task_id === task.id && x.learner_id === l.id);
-      return { name: l.name, red: m?.absent ? 'AB' : m?.mark ?? '', green: '', orange: '', purple: '', note: '' };
+      return { name: l.name, red: m?.absent ? 'AB' : m?.mark ?? '', green: m?.green ?? '', orange: m?.orange ?? '', purple: m?.purple ?? '', note: '' };
     });
     const m = await saveModeration({ kind: 'colours', title: task.name, subjectId: subj?.id || '', cls: sh.class, teacher: sh.teacher || state.settings.teacherName,
-      total: +task.out_of, purple: false, tolerance: state.settings.modTolerance, source: 'Skool Huis mark book', date: today(), stages: {}, rows });
+      total: +task.out_of, purple: rows.some(r => r.purple !== ''), tolerance: state.settings.modTolerance, source: 'Skool Huis mark book', date: today(), stages: {}, rows });
     md.close();
     onMade?.(m);
     location.hash = 'moderation/' + m.id;

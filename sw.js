@@ -1,6 +1,6 @@
 // Offline support: every app file is cached on install, so Klasboek opens with no internet.
 // Bump VERSION whenever you change any file so teachers get the update.
-const VERSION = 'klasboek-v46';
+const VERSION = 'klasboek-v47';
 const FILES = [
   './',
   './fonts/atkinson-hyperlegible-latin-400-italic.woff2',
@@ -27,6 +27,7 @@ const FILES = [
   './js/db.js',
   './js/docxfill.js',
   './js/edition.js',
+  './js/embed.js',
   './js/events.js',
   './js/exporters.js',
   './js/fbauth.js',

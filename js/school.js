@@ -10,6 +10,7 @@
 // database), so it is never part of a backup, a GitHub sync or a Google sync.
 
 import { SKOOLHUIS } from './config.js';
+import { inSkoolHuis, skoolHuisSession, rawStorage, SB_KEY, skoolHuisHome } from './embed.js';
 import { state, saveSettings, saveEvents, deleteEvents } from './state.js';
 
 const KEY = 'klasboek.school.v1';
@@ -52,7 +53,46 @@ async function auth(path, body) {
   return j;
 }
 
+// Inside Skool Huis: use the teacher's Skool Huis sign-in. Refreshing it takes the same lock the
+// Skool Huis app uses, so two tabs never refresh it at the same time.
+async function skoolHuisToken() {
+  const fresh = x => x?.access_token && x.expires_at && x.expires_at * 1000 > Date.now() + 60_000;
+  const now = skoolHuisSession();
+  if (fresh(now)) return now.access_token;
+  const refresh = async () => {
+    const s = skoolHuisSession();
+    if (fresh(s)) return s.access_token;
+    if (!s?.refresh_token) { location.replace(skoolHuisHome()); throw new SchoolError('Sign in to Skool Huis again.'); }
+    let j;
+    try { j = await auth('token?grant_type=refresh_token', { refresh_token: s.refresh_token }); }
+    catch (e) {
+      if (e instanceof SchoolError && !/reach/.test(e.message)) { location.replace(skoolHuisHome()); throw new SchoolError('Sign in to Skool Huis again.'); }
+      throw e;
+    }
+    rawStorage.set(SB_KEY, JSON.stringify({ ...s, ...j }));
+    return j.access_token;
+  };
+  return navigator.locks ? navigator.locks.request(`lock:${SB_KEY}`, refresh) : refresh();
+}
+
+/** Inside Skool Huis: link Klasboek to the teacher's school (no separate sign-in). */
+export async function linkToSkoolHuis() {
+  if (!inSkoolHuis) return;
+  const sess = skoolHuisSession();
+  if (!sess?.user) return;
+  const s = read();
+  if (s?.school && s.user === sess.user.id) return;
+  const rows = await api(`school_members?select=role,school:schools(id,name)&user_id=eq.${sess.user.id}`);
+  const staff = (rows || []).filter(r => r.role === 'admin' || r.role === 'teacher');
+  if (!staff.length) return;
+  const schools = [...new Map(staff.map(r => [r.school.id, r.school])).values()];
+  const pick = staff.find(r => r.role === 'teacher') || staff[0];
+  write({ email: sess.user.email, user: sess.user.id, school: pick.school,
+    role: staff.filter(r => r.school.id === pick.school.id).some(r => r.role === 'admin') ? 'admin' : 'teacher', schools });
+}
+
 async function token() {
+  if (inSkoolHuis) return skoolHuisToken();
   const s = read();
   if (!s?.refresh_token) throw new SchoolError('Connect to your school first (Settings › Your school).');
   if (s.expires_at && s.expires_at * 1000 > Date.now() + 60_000) return s.access_token;
@@ -105,6 +145,7 @@ export function chooseSchool(id) {
 
 /** Disconnect this device. School calendar events brought in are removed too. */
 export async function disconnect() {
+  if (inSkoolHuis) return;
   const s = read();
   if (s?.access_token) fetch(`${SKOOLHUIS.url}/auth/v1/logout`, { method: 'POST', headers: { apikey: SKOOLHUIS.key, Authorization: `Bearer ${s.access_token}` } }).catch(() => {});
   write(null);
@@ -199,3 +240,5 @@ export function toSchoolItem(it, area) {
     hazard: it.hazard || null, formula: it.formula || null, notes: it.notes || null,
   };
 }
+
+export { inSkoolHuis };
