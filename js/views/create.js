@@ -204,8 +204,11 @@ function newDialog(type, pre = {}) {
     const now = tw && items.find(a => a.term === tw.term && tw.week >= a.week && tw.week <= (a.weekEnd || a.week));
     f.atpId = now?.id || items[0]?.id || '';
     // Tests and worksheets can cover several topics: start with this week's ATP topic and its textbook chapter.
-    f.atpIds = new Set(now ? [now.id] : []);
-    const a0 = now, sv = a0 && siyavulaFor(subjectById(f.subjectId), a0.topic, a0.details || '');
+    // No topic this week (e.g. a revision or test week)? Tests cover what was just taught: the latest earlier topic.
+    const before = !now && tw ? items.filter(a => a.term < tw.term || (a.term === tw.term && (a.weekEnd || a.week) < tw.week)).sort((a, b) => a.term - b.term || a.week - b.week).at(-1) : null;
+    const pick = now || before;
+    f.atpIds = new Set(pick ? [pick.id] : []);
+    const a0 = pick, sv = a0 && siyavulaFor(subjectById(f.subjectId), a0.topic, a0.details || '');
     f.chapters = new Set(sv ? [sv.path] : []);
   };
   const MULTI = ['test', 'worksheet'].includes(type);
