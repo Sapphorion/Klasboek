@@ -3,6 +3,7 @@ import { state, saveSettings } from '../state.js';
 import { h, icon, toast } from '../ui.js';
 import { fbConfigured } from '../fbauth.js';
 import { signInFlow } from '../signin.js';
+import { inSkoolHuis } from '../embed.js';
 
 export function needsWelcome() {
   if (state.settings.edition) return false;
@@ -26,6 +27,8 @@ export function openWelcome(onDone, { edition } = {}) {
   const pick = async ed => {
     await saveSettings({ edition: ed, home: ed === 'uni' ? 'planner' : (state.settings.home || 'today') });
     window.dispatchEvent(new Event('klasboek-edition'));
+    // Inside Skool Huis the teacher is already signed in with their Skool Huis account: no Google step.
+    if (inSkoolHuis) { await saveSettings({ onboarded: true }); finish(); return; }
     step2();
   };
   const step2 = () => body.replaceChildren(
