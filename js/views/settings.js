@@ -7,6 +7,8 @@ import { formatsSection } from './formats.js';
 import { displaySection, lookSection } from './display.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
+import { inSkoolHuis } from '../embed.js';
+import { schoolAi } from '../school.js';
 import { exportBackup, importBackup } from '../db.js';
 import { termWeeks } from '../dates.js';
 
@@ -85,6 +87,19 @@ function view() {
   const keyIn = h('input', { type: 'password', value: s.apiKey, placeholder: 'sk-ant-…', autocomplete: 'off', onchange: e => saveSettings({ apiKey: e.target.value.trim() }) });
   const testBtn = h('button', { class: 'btn ghost sm' }, 'Test the key');
   testBtn.onclick = async () => { await saveSettings({ apiKey: keyIn.value.trim() }); const done = busy(testBtn, 'Testing…'); try { const r = await testKey(); toast('Key works: ' + r); } catch (e) { toast(e.message, 'error'); } finally { done(); } };
+  if (inSkoolHuis) {
+    // Inside Skool Huis the school provides the AI: no key, the school's models only.
+    const ai = schoolAi();
+    const allowed = MODELS.filter(m => !ai?.models?.length || ai.models.includes(m.id));
+    const rand = n => 'R' + Number(n || 0).toFixed(2);
+    page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'AI writing (Claude)'),
+      h('p', { class: 'muted small' }, 'AI writes full lesson plans, slides and worksheets with memos, and reads hard-to-parse ATPs and timetable photos. ',
+        ai?.enabled ? 'Your school pays for it, so you don’t need an API key. ' : 'Your school hasn’t switched it on yet; ask the office. ', 'Without it, templates still work offline.'),
+      ai?.enabled ? h('p', {}, `This month you’ve used ${rand(ai.used_zar)}${ai.cap_zar ? ` of your ${rand(ai.cap_zar)}` : ''}.`, ai.school_left ? '' : ' The school’s budget for this month is used up.') : null,
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),
+      h('div', { class: 'form-grid' },
+        field('Model', h('select', { onchange: e => saveSettings({ model: e.target.value }) }, allowed.map(m => h('option', { value: m.id, selected: m.id === s.model }, m.label)))))));
+  } else
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'AI writing (Claude)'),
     h('p', { class: 'muted small' }, 'AI writes full lesson plans, slides and worksheets with memos, and reads hard-to-parse ATPs and timetable photos. It needs internet and a Claude API key from console.anthropic.com (you pay per use). Without it, templates still work offline.'),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),

@@ -242,3 +242,30 @@ export function toSchoolItem(it, area) {
 }
 
 export { inSkoolHuis };
+
+// ---------- AI paid by the school (only inside Skool Huis) ----------
+
+let schoolAiState = null;
+/** { enabled, models, used_zar, cap_zar, school_left } once checked, else null. */
+export const schoolAi = () => schoolAiState;
+
+export async function refreshSchoolAi() {
+  if (!inSkoolHuis || !school()) return null;
+  try { schoolAiState = await rpc('ai_status', { p_school: school().school.id }); } catch { /* keep the last known state */ }
+  tell();
+  return schoolAiState;
+}
+
+/** Sends a Claude request through the school's AI (Skool Huis pays, within its budget). */
+export async function schoolAiFetch(request) {
+  const s = school();
+  if (!s) throw new SchoolError('Klasboek isn’t linked to your school yet. Try again in a moment.');
+  const t = await token();
+  try {
+    return await fetch(`${SKOOLHUIS.url}/functions/v1/ai`, {
+      method: 'POST',
+      headers: { apikey: SKOOLHUIS.key, Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ school_id: s.school.id, request }),
+    });
+  } catch { throw new SchoolError('Could not reach your school’s AI. Check the internet connection.'); }
+}

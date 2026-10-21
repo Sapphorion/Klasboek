@@ -24,7 +24,7 @@ import { currentTheme, setLook } from './views/display.js';
 import { openInstall, isInstalled, onInstallChange } from './views/install.js';
 import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
-import { pullIfDue, linkToSkoolHuis } from './school.js';
+import { pullIfDue, linkToSkoolHuis, refreshSchoolAi } from './school.js';
 
 const ROUTES = [
   { id: 'today', only: 'school', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
@@ -150,7 +150,7 @@ async function start() {
   }
   syncBadge(); onSync(syncBadge); onAuth(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
   // Connected to the school's Skool Huis? Bring in the term dates and school calendar every few hours.
-  const schoolPull = () => { if (!isUni()) linkToSkoolHuis().catch(() => null).then(() => pullIfDue()).then(r => { if (r?.events || r?.terms) toast(`School calendar updated${r.terms ? ', with new term dates' : ''}.`); }); };
+  const schoolPull = () => { if (!isUni()) linkToSkoolHuis().catch(() => null).then(() => { refreshSchoolAi(); return pullIfDue(); }).then(r => { if (r?.events || r?.terms) toast(`School calendar updated${r.terms ? ', with new term dates' : ''}.`); }); };
   schoolPull();
   window.addEventListener('online', schoolPull);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) schoolPull(); });
