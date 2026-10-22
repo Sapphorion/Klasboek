@@ -94,7 +94,7 @@ function view() {
     ),
   ));
 
-  wrap.append(tidyBanner(), weekStrip());
+  wrap.append(tidyBanner());
   if (picked) wrap.append(h('div', { class: 'picked-bar', role: 'status' }, 'Tap an empty period to place ', h('strong', {}, pickedLabel()), '.', h('button', { class: 'btn ghost sm', onclick: () => { picked = null; rerender(); } }, 'Cancel')));
 
   // ---------- Grid ----------
@@ -156,23 +156,6 @@ function tidyBanner() {
   return h('div', { class: 'notice-banner tidy-banner', role: 'status' }, icon('flag', 18),
     h('div', {}, h('strong', {}, 'Grades or colours mixed up'), h('span', {}, `It looks like ${what}.`)),
     h('button', { class: 'btn sm', onclick: openTidy }, 'Check and fix'));
-}
-
-// This week and next week at a glance: tests, deadlines, events, moderation.
-function weekStrip() {
-  const col = (label, from) => {
-    const list = upcoming({ from, days: 6, limit: 8 }).filter(e => (e.endDate || e.date) >= from);
-    return h('div', { class: 'ws-col' }, h('h3', {}, label),
-      list.length ? h('ul', {}, list.map(e => h('li', {},
-        h('button', { class: 'ev-chip', style: { '--c': typeOf(e.type).colour }, title: typeOf(e.type).label, onclick: () => e.notice ? location.hash = 'moderation/notice/' + e.notice : openEvent(e) },
-          h('span', { class: 'when' }, e.date < from ? 'Ongoing' : fmt(e.date, { weekday: 'short', day: 'numeric' })),
-          h('span', {}, e.title, e.notes && e.notice ? h('span', { class: 'muted' }, ' · ' + e.notes) : null))))) :
-        h('p', { class: 'muted small' }, 'Nothing on the calendar.'));
-  };
-  return h('section', { class: 'week-strip', 'aria-label': 'What’s coming' },
-    col(weekStart === mondayOf(today()) ? 'This week' : `Week of ${fmt(weekStart)}`, weekStart),
-    col('Next week', addDays(weekStart, 7)),
-    h('button', { class: 'ws-add btn ghost sm', onclick: () => editEvent({ date: weekStart < today() && today() < addDays(weekStart, 7) ? today() : weekStart, type: 'test' }) }, icon('plus', 16), 'Test or deadline'));
 }
 
 function cycleBadge(tw) {
