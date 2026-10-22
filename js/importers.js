@@ -850,3 +850,35 @@ export async function extractText(file) {
   if (/\.pptx$/i.test(file.name)) throw new Error('PowerPoint files can’t be read yet. Save it as PDF first.');
   throw new Error('Use a PDF, Word, Excel or text file.');
 }
+
+// ---------- Programme of Assessment ----------
+// Reads the text, plus a first guess at the tasks from tables (rows naming a test, exam, practical…).
+// AI reads messy or multi-subject PoAs much better; this covers tidy one-subject tables offline.
+const POA_KIND = [['exam', /\b(exam|examination|eksamen|paper\s*\d)\b/i], ['practical', /\b(practical|prakties|experiment)\b/i], ['investigation', /\b(investigation|ondersoek)\b/i],
+  ['project', /\bproje[ck]t\b/i], ['assignment', /\b(assignment|opdrag|case study|research)\b/i], ['oral', /\b(oral|mondeling|speech|listening)\b/i], ['test', /\b(test|toets|control|kontrole)\b/i]];
+export async function readPoaFile(file) {
+  const k = kindOf(file);
+  let grids = [];
+  if (k === 'sheet') grids = (await sheetGrids(file)).map(s => s.grid);
+  else if (k === 'docx') grids = (await docxTablesAndText(file)).grids;
+  const text = await extractText(file);
+  const tasks = [];
+  for (const grid of grids) {
+    const head = (grid.find(r => r.filter(Boolean).length >= 3) || []).map(c => String(c || '').toLowerCase());
+    const col = re => head.findIndex(c => re.test(c));
+    const cTerm = col(/term|kwartaal/), cMarks = col(/mark|punt|total|totaal/), cTime = col(/time|duration|tyd|min/), cWeight = col(/weight|%|gewig/), cTask = col(/task|assessment|taak|form|activity|aktiwiteit/), cTopic = col(/topic|content|onderwerp|inhoud|scope/);
+    let term = 0;
+    for (const row of grid) {
+      const cells = row.map(c => String(c ?? '').trim());
+      const line = cells.join(' ');
+      const tm = line.match(/\bterm\s*(\d)\b|\bkwartaal\s*(\d)\b|\bT([1-4])\b/i); if (tm) term = +(tm[1] || tm[2] || tm[3]);
+      const kind = POA_KIND.find(([, re]) => re.test(cTask >= 0 ? cells[cTask] : line))?.[0];
+      if (!kind || /^(task|assessment|taak)$/i.test(cells[cTask] || '')) continue;
+      const num = i => { const n = i >= 0 ? toNumber(cells[i]) : null; return n == null ? 0 : n; };
+      const name = (cTask >= 0 ? cells[cTask] : cells.find(c => POA_KIND.some(([, re]) => re.test(c)))) || kind;
+      const t = cTerm >= 0 ? +(String(cells[cTerm]).match(/[1-4]/)?.[0] || term) : term;
+      tasks.push({ term: t || 1, name: name.slice(0, 120), kind, marks: num(cMarks), minutes: num(cTime) || (/(\d+)\s*(min|minutes)/i.exec(line)?.[1] | 0), weight: cWeight >= 0 ? cells[cWeight] : '', due: '', topicList: cTopic >= 0 && cells[cTopic] ? cells[cTopic].split(/\n|;|•/).map(x => x.trim()).filter(Boolean) : [], levelPercents: [], format: '' });
+    }
+  }
+  return { text, tasks };
+}

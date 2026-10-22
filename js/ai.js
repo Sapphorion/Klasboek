@@ -32,7 +32,7 @@ export function aiUnavailableReason() {
 
 // Models sometimes send a list as a JSON string ("[{…}]"), or as an object with numbered keys.
 // Put lists back into shape wherever one is expected, so nothing downstream trips over it.
-const LIST_KEYS = new Set(['blocks', 'slides', 'cards', 'criteria', 'levels', 'options', 'items', 'terms', 'rows', 'fns', 'points', 'instructions', 'bullets', 'descriptors',
+const LIST_KEYS = new Set(['tasks', 'levelPercents', 'topicList', 'blocks', 'slides', 'cards', 'criteria', 'levels', 'options', 'items', 'terms', 'rows', 'fns', 'points', 'instructions', 'bullets', 'descriptors',
   'questions', 'phases', 'objectives', 'vocabulary', 'sections', 'keyPoints', 'resources', 'events', 'cells', 'periods', 'topics', 'weeks', 'notes_sections']);
 class ShapeError extends Error {}
 // Make a JSON-ish string parse: escape stray backslashes (LaTeX like \frac), raw line breaks inside
@@ -60,7 +60,7 @@ export function lenientJson(t) {
   try { return JSON.parse(tail + stack.slice().reverse().join('')); } catch {}
   return undefined;
 }
-const STRUCTURED = new Set(['blocks', 'slides', 'cards', 'criteria', 'levels', 'questions', 'phases', 'sections', 'rows', 'cells', 'events', 'periods', 'weeks', 'topics', 'fns', 'points', 'vocabulary']);
+const STRUCTURED = new Set(['tasks', 'blocks', 'slides', 'cards', 'criteria', 'levels', 'questions', 'phases', 'sections', 'rows', 'cells', 'events', 'periods', 'weeks', 'topics', 'fns', 'points', 'vocabulary']);
 function asList(v, key = '') {
   if (Array.isArray(v)) return v;
   if (v == null || v === '') return [];
@@ -306,6 +306,36 @@ export async function aiParseAtp(text, subject) {
     maxTokens: 16000,
   });
   return r.items || [];
+}
+
+// ---------- Programme of Assessment ----------
+const POA_SCHEMA = {
+  type: 'object',
+  properties: {
+    tasks: { type: 'array', description: 'Every formal assessment task for this subject and grade, in order', items: { type: 'object', properties: {
+      term: { type: 'integer', description: '1-4' },
+      name: { type: 'string', description: 'As the document names it, e.g. "Control Test 1", "Practical investigation", "June Examination Paper 1"' },
+      kind: { type: 'string', enum: ['test', 'exam', 'practical', 'assignment', 'project', 'investigation', 'oral', 'other'] },
+      marks: { type: 'number', description: 'Total marks, 0 if not given' },
+      minutes: { type: 'number', description: 'Duration in minutes, 0 if not given' },
+      weight: { type: 'string', description: 'Weighting toward the term/year mark as written, e.g. "10%" or "25% of SBA"; empty if not given' },
+      due: { type: 'string', description: 'Date or week as written (e.g. "Week 7", "15 May 2026"); empty if not given' },
+      topicList: { type: 'array', items: { type: 'string' }, description: 'Content or topics the task covers' },
+      levelPercents: { type: 'array', items: { type: 'number' }, description: 'Cognitive level split in percent, lowest level first (e.g. [15,40,35,10]); empty if not given' },
+      format: { type: 'string', description: 'Requirements for the paper or task: sections, question types, compulsory parts, resources allowed, rubric, etc. Empty if none.' },
+    }, required: ['term', 'name'] } },
+    general: { type: 'string', description: 'Rules that apply to all tasks for this subject (cognitive level guidelines, how the term mark is made up, general paper format). Keep it short.' },
+  },
+  required: ['tasks'],
+};
+export async function aiParsePoa(text, subject) {
+  const r = await call({
+    system: 'You extract South African school Programmes of Assessment (PoA) into clean structured data. Keep task names, marks, weightings and requirements exactly as the document gives them. Do not invent anything that is not in the text.',
+    content: `Subject: ${subject.name}${subject.grade ? ', Grade ' + subject.grade : ''}.\nBelow is text extracted from a Programme of Assessment. It may be jumbled because it came from a table, and it may cover several subjects or grades: return ONLY the formal assessment tasks for ${subject.name}${subject.grade ? ' Grade ' + subject.grade : ''} (if the document is clearly only about one subject and grade, use all of it).\n\n---\n${text.slice(0, 120000)}`,
+    tool: { name: 'save_poa', description: 'Save the Programme of Assessment', schema: POA_SCHEMA },
+    maxTokens: 12000,
+  });
+  return { tasks: (r.tasks || []).map(t => ({ ...t, topicList: Array.isArray(t.topicList) ? t.topicList : [], levelPercents: Array.isArray(t.levelPercents) ? t.levelPercents.map(Number).filter(n => !isNaN(n)) : [] })), general: r.general || '' };
 }
 
 // ---------- Timetable from a photo ----------

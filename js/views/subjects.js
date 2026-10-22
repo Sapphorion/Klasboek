@@ -2,8 +2,9 @@
 import { state, onChange, upsertSubject, deleteSubject, replaceAtp, replaceAtpTerm, saveAtpItem, deleteAtpItem, subjectLabel, SUBJECT_COLOURS, freeColour } from '../state.js';
 import { h, icon, toast, busy, confirmBox, dropZone, modal } from '../ui.js';
 import { uid } from '../db.js';
-import { readAtpFile } from '../importers.js';
-import { aiParseAtp, aiReady, aiUnavailableReason } from '../ai.js';
+import { readAtpFile, readPoaFile } from '../importers.js';
+import { aiParseAtp, aiParsePoa, aiReady, aiUnavailableReason } from '../ai.js';
+import { TASK_KINDS, kindLabel, poaTasks, taskLine } from '../poa.js';
 import { termWeeks } from '../dates.js';
 
 let selected = null;
@@ -109,6 +110,7 @@ function subjectDetail(s) {
   // ATP table
   if (items.length) box.append(atpTable(s, items));
   else box.append(h('p', { class: 'muted' }, 'No ATP topics yet. Upload the ATP above, or ', h('button', { class: 'link', onclick: async () => { await saveAtpItem({ id: uid('a_'), subjectId: s.id, term: 1, week: 1, weekEnd: 1, topic: 'New topic', details: '', order: 0 }); } }, 'type them in'), '.'));
+  box.append(poaSection(s));
   return box;
 }
 
@@ -186,4 +188,89 @@ function atpTable(s, items) {
           );
         })));
     }));
+}
+
+// ---------- Programme of Assessment ----------
+function poaSection(s) {
+  const sec = h('section', { class: 'poa-sec' });
+  const status = h('div', { class: 'upload-status', 'aria-live': 'polite' });
+  const tasks = poaTasks(s);
+  const readAi = async (btn) => {
+    const done = btn ? busy(btn, 'Claude is reading the PoA… up to a minute') : () => {};
+    if (!btn) status.replaceChildren(h('span', { class: 'spinner' }), ' Claude is reading the Programme of Assessment…');
+    try { const r = await aiParsePoa(s.poa.text, s); status.replaceChildren(); poaEditor(s, r.tasks, r.general, 'AI reading of ' + (s.poa.file || 'the PoA')); }
+    catch (e) { status.replaceChildren(h('p', { class: 'error' }, e.message)); }
+    finally { done(); }
+  };
+  sec.append(h('div', { class: 'row between wrap' }, h('h3', {}, 'Programme of Assessment'),
+      tasks.length ? h('div', { class: 'row wrap' },
+        h('button', { class: 'btn ghost sm', onclick: () => poaEditor(s, tasks.map(t => ({ ...t })), s.poa.general || '', 'your saved PoA') }, 'Edit tasks'),
+        h('button', { class: 'btn ghost sm danger', onclick: async () => { if (await confirmBox(`Remove the Programme of Assessment for ${subjectLabel(s)}?`, 'Remove')) { delete s.poa; await upsertSubject(s); toast('Programme of Assessment removed.'); } } }, icon('trash', 14))) : null),
+    h('p', { class: 'muted small' }, 'Upload the PoA for this subject and grade. Create uses it to set up tests, exams and worksheets: the marks, time, content, cognitive levels and format of each formal task.'),
+    dropZone({
+      accept: '.pdf,.docx,.xlsx,.xls,.csv,.txt', label: tasks.length ? 'Replace the Programme of Assessment' : 'Upload the Programme of Assessment',
+      hint: 'PDF, Word or Excel. A PoA for the whole grade is fine: only this subject’s tasks are used.',
+      onFiles: async ([file]) => {
+        status.replaceChildren(h('span', { class: 'spinner' }), ` Reading ${file.name}…`);
+        try {
+          const r = await readPoaFile(file);
+          s.poa = { ...(s.poa || {}), file: file.name, text: r.text.slice(0, 150000), updated: new Date().toISOString() };
+          await upsertSubject(s);
+          if (aiReady()) await readAi(null);
+          else { status.replaceChildren(); poaEditor(s, r.tasks, s.poa.general || '', file.name); }
+        } catch (e) { status.replaceChildren(h('p', { class: 'error' }, e.message)); }
+      },
+    }), status);
+  if (s.poa?.text) sec.append(h('p', { class: 'muted small' }, `Source: ${s.poa.file || 'uploaded file'}. `,
+    (() => { const b = h('button', { class: 'link', disabled: !aiReady(), title: aiUnavailableReason() || 'Let Claude read the PoA. Best for tables and PoAs covering several subjects.' }, icon('spark', 14), ' Read it again with AI'); b.onclick = () => readAi(b); return b; })()));
+  if (tasks.length) {
+    for (const term of [1, 2, 3, 4]) {
+      const list = tasks.filter(t => (t.term || 1) === term);
+      if (!list.length) continue;
+      sec.append(h('div', { class: 'poa-term' }, h('div', { class: 'poa-term-h' }, `Term ${term}`),
+        h('ul', { class: 'poa-list' }, list.map(t => h('li', {},
+          h('div', { class: 'poa-main' }, h('span', { class: 'tag' }, kindLabel(t.kind)), h('strong', {}, t.name), h('span', { class: 'muted small' }, [taskLine(t), t.due].filter(Boolean).join(' · '))),
+          (t.topicList || []).length ? h('div', { class: 'small poa-topics' }, t.topicList.join(' · ')) : null,
+          (t.levelPercents || []).length || t.format ? h('div', { class: 'muted small' }, [(t.levelPercents || []).length ? 'Levels ' + t.levelPercents.join('/') + '%' : '', t.format].filter(Boolean).join(' · ')) : null)))));
+    }
+    if (s.poa.general) sec.append(h('p', { class: 'small poa-general' }, h('strong', {}, 'Applies to all tasks: '), s.poa.general));
+  } else if (s.poa?.text) sec.append(h('p', { class: 'muted small' }, 'No tasks found yet. ', aiReady() ? 'Use “Read it again with AI”, or ' : '', h('button', { class: 'link', onclick: () => poaEditor(s, [], s.poa.general || '', s.poa.file) }, 'type them in'), '.'));
+  return sec;
+}
+
+// Check and fix the tasks before saving.
+function poaEditor(s, tasks, general, source) {
+  tasks = tasks.map(t => ({ id: t.id || uid('pt_'), term: t.term || 1, name: t.name || '', kind: t.kind || 'test', marks: t.marks || '', minutes: t.minutes || '', weight: t.weight || '', due: t.due || '', topicList: t.topicList || [], levelPercents: t.levelPercents || [], format: t.format || '' }));
+  const g = { general };
+  const body = h('div', { class: 'poa-editor' });
+  const m = modal(`Programme of Assessment: ${subjectLabel(s)}`, body, { wide: true });
+  const draw = () => {
+    body.replaceChildren(
+      h('p', { class: 'muted small' }, tasks.length ? `Found ${tasks.length} task${tasks.length === 1 ? '' : 's'} in ${source}. Check them, fix anything that’s wrong, then save.` : `No tasks found in ${source}. Add them below.`),
+      h('div', { class: 'poa-rows' }, tasks.map((t, i) => h('div', { class: 'poa-row' },
+        h('div', { class: 'poa-r1' },
+          h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Term'), h('select', { onchange: e => t.term = +e.target.value }, [1, 2, 3, 4].map(n => h('option', { value: n, selected: n === +t.term }, n)))),
+          h('label', { class: 'field grow' }, h('span', { class: 'lbl' }, 'Task'), h('input', { value: t.name, placeholder: 'e.g. Control Test 1', oninput: e => t.name = e.target.value })),
+          h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Type'), h('select', { onchange: e => t.kind = e.target.value }, TASK_KINDS.map(([k, l]) => h('option', { value: k, selected: k === t.kind }, l)))),
+          h('label', { class: 'field sm' }, h('span', { class: 'lbl' }, 'Marks'), h('input', { type: 'number', min: 0, value: t.marks, oninput: e => t.marks = +e.target.value || '' })),
+          h('label', { class: 'field sm' }, h('span', { class: 'lbl' }, 'Minutes'), h('input', { type: 'number', min: 0, value: t.minutes, oninput: e => t.minutes = +e.target.value || '' })),
+          h('label', { class: 'field sm' }, h('span', { class: 'lbl' }, 'Weighting'), h('input', { value: t.weight, placeholder: 'e.g. 10%', oninput: e => t.weight = e.target.value })),
+          h('label', { class: 'field sm' }, h('span', { class: 'lbl' }, 'When'), h('input', { value: t.due, placeholder: 'e.g. Week 7', oninput: e => t.due = e.target.value })),
+          h('button', { class: 'icon-btn', 'aria-label': 'Remove ' + (t.name || 'task'), onclick: () => { tasks.splice(i, 1); draw(); } }, icon('trash', 16))),
+        h('div', { class: 'poa-r2' },
+          h('label', { class: 'field grow' }, h('span', { class: 'lbl' }, 'Content covered (one per line)'), h('textarea', { rows: 2, oninput: e => t.topicList = e.target.value.split('\n').map(x => x.trim()).filter(Boolean) }, t.topicList.join('\n'))),
+          h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Cognitive levels %'), h('input', { value: t.levelPercents.join('/'), placeholder: 'e.g. 15/40/35/10', oninput: e => t.levelPercents = e.target.value.split(/[\/,;\s]+/).map(Number).filter(n => !isNaN(n) && n > 0) })),
+          h('label', { class: 'field grow' }, h('span', { class: 'lbl' }, 'Format and requirements'), h('textarea', { rows: 2, placeholder: 'e.g. Section A multiple choice, Section B long questions; calculators allowed', oninput: e => t.format = e.target.value }, t.format)))))),
+      h('div', { class: 'row' }, h('button', { class: 'btn ghost sm', onclick: () => { tasks.push({ id: uid('pt_'), term: tasks.at(-1)?.term || 1, name: '', kind: 'test', marks: '', minutes: '', weight: '', due: '', topicList: [], levelPercents: [], format: '' }); draw(); body.querySelector('.poa-row:last-child input:not([type])')?.focus(); } }, icon('plus', 14), 'Add a task')),
+      h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Rules for all tasks (optional)'), h('textarea', { rows: 2, placeholder: 'e.g. Tests: 15% recall, 40% comprehension… Term mark = 25% tests + 25% practical + 50% June exam', oninput: e => g.general = e.target.value }, g.general)),
+      h('div', { class: 'row end' },
+        h('button', { class: 'btn ghost', onclick: () => m.close() }, 'Cancel'),
+        h('button', { class: 'btn primary', onclick: async () => {
+          const clean = tasks.filter(t => t.name.trim()).map(t => ({ ...t, name: t.name.trim(), marks: +t.marks || 0, minutes: +t.minutes || 0 }));
+          s.poa = { ...(s.poa || {}), tasks: clean, general: g.general.trim(), updated: new Date().toISOString() };
+          await upsertSubject(s); m.close();
+          toast(`Saved ${clean.length} assessment task${clean.length === 1 ? '' : 's'}. Create will offer them for ${subjectLabel(s)}.`);
+        } }, 'Save the tasks')));
+  };
+  draw();
 }

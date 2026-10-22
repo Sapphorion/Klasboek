@@ -1,6 +1,7 @@
 // Create: make tests, worksheets, notes, slides, rubrics and flashcards, then design them
 // with a live A4 preview.
 import { siyavulaFor, chaptersOf } from '../siyavula.js';
+import { poaTasks, taskById, taskLine, kindLabel, describeTask } from '../poa.js';
 import { state, onChange, saveCreation, deleteCreation, creationById, subjectById, subjectLabel, atpById, classLabel } from '../state.js';
 import { h, icon, toast, modal, confirmBox, busy, dropZone, esc } from '../ui.js';
 import { aiCreate, aiRevise, aiReady, aiUnavailableReason, aiDiagram, aiCreateTest, aiTestSection } from '../ai.js';
@@ -178,6 +179,7 @@ async function buildWithAi(type, o) {
   const marks = ['test', 'worksheet'].includes(type) ? (o.marks || (type === 'test' ? 50 : 20)) : 0;
   const brief = { subject: subj?.name, grade: c.grade, language: c.language, topic: o.topic || o.title || atp?.topic || '', details: o.details ?? atp?.details ?? '', sourceText: o.sourceText || '', extra: o.extra || '',
     marks, time: type === 'test' ? (o.time || 60) : 0, count: o.count || { worksheet: 8, slides: 10, rubric: 5, cards: 16 }[type] || 0, length: o.length || 'medium', levelsCount: o.levelsCount || 4, levelNames: c.meta.levelNames, levelTargets: c.meta.levelTargets };
+  if (o.poaTask && (o.poaTask.levelPercents || []).length === (brief.levelNames || []).length) brief.levelTargets = o.poaTask.levelPercents;
   const r = type === 'test' ? await aiCreateTest(brief) : await aiCreate(type, brief);
   applyAi(c, r);
   c.meta.brief = { topic: brief.topic, details: brief.details, extra: brief.extra, sourceText: (brief.sourceText || '').slice(0, 20000) };
@@ -185,11 +187,20 @@ async function buildWithAi(type, o) {
   if (empty) throw new Error('The AI sent back an empty page. Please try again; if it keeps happening, try Claude Opus in Settings.');
   if (marks) c.meta.targetMarks = marks;
   if (!c.title) c.title = o.title || atp?.topic || typeInfo(type).label;
+  if (o.poaTask) applyPoa(c, o.poaTask);
   await saveCreation(c);
   location.hash = 'create/' + c.id;
   if (r.failed?.length) toast(`Done, but Question ${r.failed.join(' and ')} didn’t come through. Tap its heading and choose “Write this question again”.`, 'warn');
   else toast('Done. Tap anything on the page to change it.');
   return c;
+}
+
+// A PoA task's levels become the test's cognitive level targets; the task is remembered on the material.
+function applyPoa(c, t) {
+  c.meta.poa = { id: t.id, name: t.name, term: t.term };
+  if ((t.levelPercents || []).length === (c.meta.levelNames || []).length) c.meta.levelTargets = t.levelPercents.slice();
+  if (t.marks) c.meta.targetMarks = t.marks;
+  if (t.minutes && c.type === 'test') c.meta.time = t.minutes;
 }
 
 // ---------- New (choose the details) ----------
@@ -212,6 +223,7 @@ function newDialog(type, pre = {}) {
     f.chapters = new Set(sv ? [sv.path] : []);
   };
   const MULTI = ['test', 'worksheet'].includes(type);
+  f.poaId = '';
   pickAtp();
   if (pre.extra) f.source = 'none';
   const body = h('div', {});
@@ -241,6 +253,37 @@ function newDialog(type, pre = {}) {
           h('div', { class: 'tp-head' }, h('b', {}, 'Siyavula textbook')),
           h('div', { class: 'tp-list' }, chs.map(c => tick(f.chapters, c[2], `Ch ${c[0]}: ${c[1]}`, null)))) : null));
   };
+  // A formal task from the subject's Programme of Assessment: sets the marks, time, content and levels.
+  const wordsOf = t => new Set(String(t).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 3));
+  const usePoa = id => {
+    f.poaId = id;
+    const t = taskById(subjectById(f.subjectId), id);
+    if (!t) { draw(); return; }
+    if (t.marks) f.marks = t.marks;
+    if (t.minutes) f.time = t.minutes;
+    if (!f.title.trim() || f.titleFromPoa) { f.title = t.name; f.titleFromPoa = true; }
+    // Tick the ATP topics the task covers (or, if the PoA doesn't list them, that term's topics).
+    const items = state.atp.filter(a => a.subjectId === f.subjectId);
+    // A topic matches when the names are mostly the same words (or one contains the other).
+    const same = (x, y) => { const a = x.toLowerCase().trim(), b = y.toLowerCase().trim(); if (!a || !b) return false; if (a.includes(b) || b.includes(a)) return true;
+      const A = wordsOf(a), B = wordsOf(b); const both = [...A].filter(w => B.has(w)).length; return both / (A.size + B.size - both || 1) >= 0.5; };
+    const named = items.filter(a => (t.topicList || []).some(x => same(x, a.topic)));
+    const hits = named.length ? named : items.filter(a => a.term === t.term);
+    if (hits.length) { f.source = 'atp'; f.atpIds = new Set(hits.map(a => a.id)); f.chapters = new Set(); }
+    draw();
+  };
+  const poaPicker = () => {
+    const tasks = poaTasks(subjectById(f.subjectId));
+    if (!tasks.length) return f.subjectId ? h('p', { class: 'muted small' }, 'Tip: upload this subject’s Programme of Assessment on the ', h('a', { href: '#subjects/' + f.subjectId }, 'Subjects page'), ' and you can start from a formal task here.') : null;
+    const t = taskById(subjectById(f.subjectId), f.poaId);
+    return h('div', { class: 'field poa-pick' }, h('span', { class: 'lbl' }, 'Programme of Assessment task (optional)'),
+      h('select', { onchange: e => usePoa(e.target.value) },
+        h('option', { value: '' }, 'Not a formal PoA task'),
+        [1, 2, 3, 4].map(term => { const list = tasks.filter(x => (x.term || 1) === term); return list.length ? h('optgroup', { label: `Term ${term}` }, list.map(x => h('option', { value: x.id, selected: x.id === f.poaId }, `${x.name}${taskLine(x) ? ' · ' + taskLine(x) : ''}`))) : null; })),
+      t ? h('p', { class: 'poa-note small' }, `${kindLabel(t.kind)} · Term ${t.term}${taskLine(t) ? ' · ' + taskLine(t) : ''}. `,
+        (t.topicList || []).length ? `Covers: ${t.topicList.join('; ')}. ` : '', (t.levelPercents || []).length ? `Levels ${t.levelPercents.join('/')}%. ` : '', t.format ? `Format: ${t.format}` : '',
+        h('span', { class: 'muted' }, ' The AI follows these.')) : null);
+  };
   const draw = () => {
     const atps = state.atp.filter(a => a.subjectId === f.subjectId);
     const srcText = h('textarea', { rows: 5, placeholder: 'Paste notes, a textbook section or a memo. Or upload a file below.', oninput: e => f.text = e.target.value }, f.text);
@@ -255,10 +298,11 @@ function newDialog(type, pre = {}) {
     }[type];
     body.replaceChildren(
       h('div', { class: 'form-grid' },
-        h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Subject'), h('select', { onchange: e => { f.subjectId = e.target.value; f.grade = subjectById(f.subjectId)?.grade || ''; pickAtp(); draw(); } },
+        h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Subject'), h('select', { onchange: e => { f.subjectId = e.target.value; f.grade = subjectById(f.subjectId)?.grade || ''; f.poaId = ''; pickAtp(); draw(); } },
           h('option', { value: '' }, 'Not linked to a subject'), state.subjects.map(s => h('option', { value: s.id, selected: s.id === f.subjectId }, subjectLabel(s))))),
         h('label', { class: 'field' }, h('span', { class: 'lbl' }, 'Grade'), h('input', { value: f.grade, placeholder: 'e.g. 9', oninput: e => f.grade = e.target.value.trim() })),
-        h('label', { class: 'field', style: { gridColumn: '1 / -1' } }, h('span', { class: 'lbl' }, 'Title or topic'), h('input', { value: f.title, placeholder: type === 'test' ? 'e.g. Term 4 controlled test: Statistics' : 'e.g. Photosynthesis', oninput: e => f.title = e.target.value }))),
+        h('label', { class: 'field', style: { gridColumn: '1 / -1' } }, h('span', { class: 'lbl' }, 'Title or topic'), h('input', { value: f.title, placeholder: type === 'test' ? 'e.g. Term 4 controlled test: Statistics' : 'e.g. Photosynthesis', oninput: e => { f.title = e.target.value; f.titleFromPoa = false; } }))),
+      MULTI ? poaPicker() : null,
       h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'What should it be based on?'),
         h('div', { class: 'seg', role: 'radiogroup' }, [['atp', MULTI ? 'ATP and textbook topics' : 'An ATP topic'], ['text', 'My notes or a file'], ['none', 'Just the title / my description']].map(([k, l]) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(f.source === k), onclick: () => { f.source = k; draw(); } }, l)))),
       f.source === 'atp' && MULTI ? topicPicker(atps) :
@@ -296,14 +340,17 @@ function newDialog(type, pre = {}) {
       ].join('\n');
       opts.multi = names.length;
     }
+    const poaTask = MULTI ? taskById(subj, f.poaId) : null;
+    if (poaTask) { opts.poa = describeTask(subj, poaTask); opts.poaTask = poaTask; }
     if (useAi) {
       const done = busy(btn, 'Writing… about a minute');
-      try { await buildWithAi(type, { ...opts, extra: [opts.multi > 1 ? `Cover all ${opts.multi} topics listed, spreading the marks fairly across them.` : '', f.extra].filter(Boolean).join(' '), marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language }); m.close(); }
+      try { await buildWithAi(type, { ...opts, extra: [opts.poa || '', opts.multi > 1 ? `Cover all ${opts.multi} topics listed, spreading the marks fairly across them.` : '', f.extra].filter(Boolean).join(' '), marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language }); m.close(); }
       catch (e) { toast(e.message, 'error'); } finally { done(); }
       return;
     }
     const c = templateCreation(type, opts);
     if (type === 'test') c.meta.time = f.time;
+    if (poaTask) applyPoa(c, poaTask);
     if (['test', 'worksheet'].includes(type)) c.meta.targetMarks = f.marks;
     if (f.language) c.language = f.language;
     await saveCreation(c);

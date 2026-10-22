@@ -1380,6 +1380,26 @@ dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: gri
 .mark-form .title-input.h1:focus { outline: 1px dashed var(--line); }
 @media (max-width: 700px) { .pen-in { width: 3.4rem; font-size: 1rem; } .pen-table .name-in { min-width: 7rem; } .pen-table th small { display: none; } .pen-table .note-in { min-width: 6rem; } }
 
+/* Programme of Assessment (Subjects) */
+.poa-sec { margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: 1rem; display: grid; gap: .6rem; }
+.poa-sec h3 { margin: 0; }
+.poa-term { display: grid; gap: .35rem; }
+.poa-term-h { font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.poa-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.poa-list li { background: var(--sheet); border: 1px solid var(--line); border-left: 4px solid var(--subj, var(--blue)); border-radius: var(--radius-s); padding: .5rem .7rem; display: grid; gap: .2rem; }
+.poa-main { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline; }
+.poa-topics { color: var(--ink); }
+.poa-general { background: var(--paper); border-radius: var(--radius-s); padding: .5rem .7rem; margin: 0; }
+.poa-rows { display: grid; gap: .7rem; max-height: 60vh; overflow-y: auto; padding-right: .3rem; }
+.poa-row { border: 1px solid var(--line); border-radius: var(--radius-s); padding: .6rem; display: grid; gap: .4rem; background: var(--sheet); }
+.poa-r1, .poa-r2 { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
+.poa-r1 .field, .poa-r2 .field { margin: 0; min-width: 0; }
+.poa-r1 .field.grow, .poa-r2 .field.grow { flex: 1 1 12rem; }
+.poa-r1 .field.sm { flex: 0 1 6.5rem; }
+.poa-r1 .field.sm input { width: 100%; }
+.poa-pick select { max-width: 100%; }
+.poa-note { margin: .35rem 0 0; background: var(--paper); border-left: 3px solid var(--blue); padding: .4rem .6rem; border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+
 /* night:auto start */
 :root[data-theme="night"] .btn:hover { background: #212522; }
 :root[data-theme="night"] .btn.ghost:hover { background: #212522; }
