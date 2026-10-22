@@ -84,11 +84,11 @@ function view() {
   if (!day) lessonsCard.append(h('p', { class: 'muted' }, 'No school days coming up in the next two months. Check your term dates in Settings.'));
   else lessonsCard.append(dayList(day));
   main.append(lessonsCard);
+  main.append(attentionBox(t, day, tw, school));
+  main.append(todoBox(t));
   main.append(monthBox(t, tw));
 
   // ===== Side column =====
-  side.append(attentionBox(t, day, tw, school));
-  side.append(todoBox(t));
 
   const evs = upcoming({ from: addDays(t, 1), days: 7, limit: 8 });
   side.append(h('section', { class: 'today-box' }, h('h2', {}, 'Coming up'),
