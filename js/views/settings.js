@@ -120,17 +120,8 @@ function view() {
     h('p', { class: 'muted small' }, 'Put Klasboek on your PC, Android phone or tablet, or Amazon Fire tablet. It opens like a normal app and works offline.'),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn', onclick: openInstall }, icon('download'), 'How to install'),
-      h('button', { class: 'btn ghost', onclick: async e => {
-        const b = e.currentTarget; b.disabled = true; b.textContent = 'Checking…';
-        try {
-          const reg = await navigator.serviceWorker?.getRegistration();
-          if (!reg) { toast('Updates work once Klasboek is opened from its web address.', 'warn'); return; }
-          await reg.update();
-          if (reg.installing || reg.waiting) toast('Downloading the new version. Klasboek will reload by itself.');
-          else toast('You have the latest version.');
-        } catch { toast('Couldn’t check. Are you online?', 'error'); }
-        finally { b.disabled = false; b.textContent = 'Check for updates'; }
-      } }, 'Check for updates'))));
+      h('button', { class: 'btn ghost', onclick: () => window.dispatchEvent(new Event('klasboek-update-now')) }, 'Check for updates')),
+    (() => { const v = h('p', { class: 'muted small' }); caches?.keys?.().then(k => { const n = k.filter(x => x.startsWith('klasboek-v')).map(x => +x.slice(10)).sort((a, b) => b - a)[0]; if (n) v.textContent = `You have version ${n}. Check for updates fetches the newest version and reloads Klasboek. Your work stays on this device.`; }).catch(() => {}); return v; })()));
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Backup'),
     h('p', { class: 'muted small' }, 'Everything is saved in this browser on this device. Download a backup regularly (and before clearing your browser), and restore it to move to another device.'),
     h('div', { class: 'row wrap' }, backupBtn, h('button', { class: 'btn ghost', onclick: () => restoreIn.click() }, icon('upload'), 'Restore from backup'), restoreIn)));

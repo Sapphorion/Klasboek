@@ -159,8 +159,24 @@ async function start() {
     // When a new version takes over, reload once so the teacher sees it straight away.
     const hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
-    navigator.serviceWorker.register('sw.js').then(reg => { reg.update().catch(() => {}); }).catch(() => {});
+    const started = Date.now();
+    const reload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;
+      // Just opened, or not on screen: reload straight away. In the middle of work: offer it, and do it when Klasboek is next put away.
+      if (document.hidden || Date.now() - started < 20000) return reload();
+      toast('A new version of Klasboek is ready.', 'ok', { action: { label: 'Reload', run: reload } });
+      document.addEventListener('visibilitychange', () => { if (document.hidden) reload(); });
+    });
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.update().catch(() => {});
+      // Klasboek often stays open for days on a tablet: look for a new version whenever it comes back on screen.
+      let last = Date.now();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && navigator.onLine && Date.now() - last > 60000) { last = Date.now(); reg.update().catch(() => {}); } });
+      setInterval(() => { if (navigator.onLine) reg.update().catch(() => {}); }, 30 * 60000);
+    }).catch(() => {});
+    window.addEventListener('klasboek-update-now', updateNow);
+    navigator.serviceWorker.ready.then(() => setTimeout(showVersion, 300)).catch(() => {});
     showVersion();
   }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
