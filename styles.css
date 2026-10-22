@@ -935,11 +935,60 @@ p.bad, td.bad { color: var(--margin); font-weight: 700; }
 .page-head h1 { margin-bottom: .15rem; }
 
 /* ---------- Today ---------- */
-.today-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
-.today-grid > .card-sec, .today-side > .card-sec { margin: 0; max-width: none; }
-.today-side { display: grid; gap: 1rem; }
-.today-progress { grid-column: 1 / -1; }
+/* Today, laid out like Skool Huis: greeting, quick buttons, main column + side boxes */
+.today-page { max-width: 1180px; }
+.today-top h1 { margin: 0; }
+.today-top .lede-small { margin: .2rem 0 0; color: var(--ink-2); font-size: 1.02rem; }
+.quick { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1.1rem 0 1.2rem; }
+.quick-btn { display: inline-flex; align-items: center; gap: .45rem; padding: .55rem .95rem; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); color: var(--ink); font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+.quick-btn:hover { border-color: var(--ink-2); }
+.quick-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.quick-btn.primary:hover { filter: brightness(1.08); }
+.today-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.today-main, .today-side { display: grid; gap: 1rem; min-width: 0; }
+.today-box { background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-m); padding: .85rem 1rem; min-width: 0; }
+.today-box > h2 { font-size: 1rem; margin: 0 0 .6rem; }
+.today-card { display: grid; gap: .35rem; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-m); padding: .8rem 1rem; color: var(--ink); text-decoration: none; }
+.today-card:hover { border-color: var(--ink-2); }
+.today-card-title { font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+.reg-progress { display: block; height: 7px; border-radius: 99px; background: var(--rule); overflow: hidden; }
+.reg-progress > span { display: block; height: 100%; background: var(--ok); border-radius: 99px; }
+.attention { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.attention li { border-left: 3px solid var(--line); padding: .1rem 0 .1rem .65rem; line-height: 1.35; }
+.attention li.urgent { border-left-color: var(--margin); }
+.attention .link { text-align: left; padding: 0; }
+.todo-add { display: grid; gap: .4rem; margin-bottom: .7rem; }
+.todo-add .row { gap: .4rem; }
+.todo-add input[type=date] { flex: 1; min-width: 0; }
+.today-progress .prog-rows { gap: .7rem; }
+.today-progress .prog-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name note" "bar bar"; gap: .25rem .6rem; }
+.today-progress .pr-name { grid-area: name; font-size: .9rem; }
+.today-progress .bar { grid-area: bar; }
+.today-progress .pr-note { grid-area: note; font-size: .8rem; }
+/* small month calendar */
+.mc-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+.mc-head h2 { font-size: 1.1rem; margin: 0; min-width: 9.5rem; text-align: center; }
+.mc-head .icon-btn { border: 1px solid var(--line); border-radius: 8px; }
+.mc-full { margin-left: auto; }
+.mc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.mc-wd { font-size: .75rem; font-weight: 700; color: var(--ink-2); text-align: center; padding-bottom: .2rem; }
+.mc-day { display: flex; flex-direction: column; gap: 2px; min-height: 3.7rem; padding: 3px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--ink); text-decoration: none; min-width: 0; overflow: hidden; }
+.mc-day:hover { border-color: var(--ink-2); }
+.mc-day.off, .mc-day.wkend { background: color-mix(in srgb, var(--blue) 7%, var(--sheet)); }
+.mc-day.out { opacity: .5; }
+.mc-day.today { border: 2px solid var(--blue); }
+.mc-day.today .mc-n { background: var(--blue); color: #fff; border-radius: 99px; padding: 0 .4rem; align-self: flex-start; }
+.mc-n { font-size: .78rem; font-weight: 700; line-height: 1.4; }
+.mc-ev { display: block; font-size: .64rem; color: #fff; border-radius: 3px; padding: 1px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-more { font-size: .64rem; color: var(--ink-2); }
+.mc-today { margin-top: .8rem; border-top: 1px solid var(--rule); padding-top: .6rem; }
+.mc-list { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .35rem; }
+.mc-list li { display: flex; gap: .7rem; align-items: baseline; flex-wrap: wrap; border: 1px solid var(--rule); border-radius: 8px; padding: .45rem .6rem; }
+.mc-time { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4.5rem; }
+.mc-list .link { display: inline-flex; gap: .4rem; align-items: center; text-align: left; }
+.mc-list .dot { width: .55rem; height: .55rem; border-radius: 50%; flex: none; }
 @media (max-width: 900px) { .today-grid { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .mc-day { min-height: 2.6rem; } .mc-ev { height: 5px; padding: 0; font-size: 0; } .quick-btn { padding: .5rem .75rem; } }
 .today-day { list-style: none; padding: 0; margin: 0; }
 .today-day li { display: grid; grid-template-columns: 3.4rem 1fr; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid var(--rule); }
 .today-day li:last-child { border-bottom: 0; }
@@ -1410,6 +1459,9 @@ dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: gri
 :root[data-theme="night"] .tag.bad { background: #311A18; }
 :root[data-theme="night"] .tag.info { background: #191F2E; }
 :root[data-theme="night"] .chip[aria-pressed="true"], :root[data-theme="night"] .chip.on { background: #171D2C; }
+:root[data-theme="night"] .quick-btn.primary { color: #111716; }
+:root[data-theme="night"] .mc-day.today .mc-n { color: #111716; }
+:root[data-theme="night"] .mc-ev { color: #111716; }
 :root[data-theme="night"] .today-day li.now { background: #161C29; }
 :root[data-theme="night"] .td-lesson .tick[aria-pressed="true"] { color: #111716; }
 :root[data-theme="night"] .bar { background: #232725; }
@@ -1421,14 +1473,3 @@ dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: gri
 :root[data-theme="night"] #toast[data-kind="warn"] .toast-ic { background: #362D19; }
 :root[data-theme="night"] .toast-x:hover { background: #232624; }
 /* night:auto end */
-
-/* Connect to my school (Skool Huis) */
-.tabs-row { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
-.school-items { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; max-width: 50rem; }
-.school-items li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; padding: .75rem 1rem; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius-m); }
-.si-main { display: grid; gap: .15rem; min-width: 0; flex: 1 1 14rem; }
-.si-count { display: grid; gap: .35rem; justify-items: end; }
-.si-count .qty-in { width: 6.5rem; }
-.school-banner { margin-top: 1rem; padding: .9rem 1rem; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: var(--radius-m); background: var(--sheet); display: grid; gap: .5rem; justify-items: start; max-width: 50rem; }
-.pick-list { list-style: none; padding: 0; display: grid; gap: .4rem; }
-.pick-list .btn { width: 100%; justify-content: flex-start; text-align: left; }
