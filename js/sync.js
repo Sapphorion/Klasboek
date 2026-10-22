@@ -69,7 +69,7 @@ function askConflict(via) {
 }
 
 // Bring this device and the shared copy in line. Safe to call often.
-export function syncNow({ quiet = true } = {}) {
+export function syncNow({ quiet = true, sendMine = false } = {}) {
   if (busy) return busy;
   busy = (async () => {
     const P = provider();
@@ -81,7 +81,8 @@ export function syncNow({ quiet = true } = {}) {
           const v = await P.version();
           const m = meta();
           if (!v) { await push(P, null); return 'pushed'; }
-          if (v === m.seen) { if (m.dirty) { await push(P, v); return 'pushed'; } setMeta({ lastSync: new Date().toISOString(), error: '' }); return 'same'; }
+          // Nothing new online: send this device's copy if it changed (or if you pressed Sync now, in case a change slipped through).
+          if (v === m.seen) { if (m.dirty || sendMine) { await push(P, v); return 'pushed'; } setMeta({ lastSync: new Date().toISOString(), error: '' }); return 'same'; }
           if (!m.seen && !m.dirty && !hasData()) { await pull(P, v); return 'pulled'; }
           if (!m.dirty && m.seen) { await pull(P, v); return 'pulled'; }
           const pick = await askConflict(P.name);

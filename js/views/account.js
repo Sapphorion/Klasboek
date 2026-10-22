@@ -86,7 +86,7 @@ const status = s => h('p', { class: 'small ' + (s.error || s.needsSignIn ? 'warn
 const autoBox = () => h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: autoSync(), onchange: e => { setAutoSync(e.target.checked); if (e.target.checked) syncNow(); } }), 'Sync automatically');
 const syncBtn = () => h('button', { class: 'btn', disabled: !navigator.onLine, onclick: async e => {
   const b = e.currentTarget; b.disabled = true;
-  try { const r = await syncNow({ quiet: false }); toast({ pushed: 'Uploaded.', pulled: 'Updated from your other device.', same: 'Everything is up to date.', later: 'Left as it is for now.', skipped: 'You’re offline.' }[r] || 'Done.'); }
+  try { const r = await syncNow({ quiet: false, sendMine: true }); toast({ pushed: 'Uploaded.', pulled: 'Updated from your other device.', same: 'Everything is up to date.', later: 'Left as it is for now.', skipped: 'You’re offline.' }[r] || 'Done.'); }
   catch (err) { toast(err.message, 'error'); } finally { b.disabled = false; }
 } }, icon('swap'), 'Sync now');
 
