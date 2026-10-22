@@ -1,7 +1,7 @@
 // Keep Klasboek the same on every device: a shared copy lives in a private GitHub repository
 // (or OneDrive's app folder, for a registered Microsoft account). Changes upload a few seconds after you make them; other devices pick them up
 // when they open or come back into view. If two devices changed things at the same time, you choose.
-import { state, onChange, emit, loadState } from './state.js';
+import { state, onChange, onSaved, emit, loadState } from './state.js';
 import { exportBackup, importBackup } from './db.js';
 import { graph, signedIn, needsSignIn, NeedSignIn } from './msauth.js';
 import { gh } from './github.js';
@@ -106,12 +106,14 @@ let started = false;
 export function startSync() {
   if (started) { syncNow(); return; }
   started = true;
-  onChange(() => {
+  const changed = () => {
     if (applying || !connected()) return;
     setMeta({ dirty: true });
     if (!autoSync()) return;
     clearTimeout(timer); timer = setTimeout(() => syncNow(), 8000);
-  });
+  };
+  onChange(changed);
+  onSaved(changed); // quiet saves too (typing in Create, the diary, moderation…)
   let last = 0;
   const check = () => { if (connected() && autoSync() && Date.now() - last > 30000) { last = Date.now(); syncNow(); } };
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); else if (meta().dirty && autoSync()) syncNow(); });

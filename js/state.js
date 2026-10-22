@@ -59,6 +59,11 @@ export const state = {
 const listeners = new Set();
 export const onChange = fn => (listeners.add(fn), () => listeners.delete(fn));
 export const emit = what => listeners.forEach(fn => fn(what));
+// Every save, including the quiet ones that don't redraw the page (typing in Create, the diary, moderation…).
+// Sync listens here so nothing you change is left off the other devices.
+const savedListeners = new Set();
+export const onSaved = fn => (savedListeners.add(fn), () => savedListeners.delete(fn));
+const saved = what => savedListeners.forEach(fn => fn(what));
 
 export async function loadState() {
   state.settings = { ...defaultSettings(), ...(await db.get('kv', 'settings') || {}) };
@@ -205,7 +210,7 @@ export async function saveModeration(m, { silent = false } = {}) {
   if (!m.id) { m.id = uid('mod_'); m.created = new Date().toISOString(); }
   const i = state.moderations.findIndex(x => x.id === m.id);
   if (i < 0) state.moderations.push(m); else state.moderations[i] = m;
-  await db.put('moderations', m); if (!silent) emit('moderations');
+  await db.put('moderations', m); if (!silent) emit('moderations'); else saved('moderations');
   return m;
 }
 export async function deleteModeration(id) {
@@ -242,7 +247,7 @@ export async function saveNotice(n, { silent = false } = {}) {
   if (!n.id) { n.id = uid('n_'); n.created = new Date().toISOString(); }
   const i = state.notices.findIndex(x => x.id === n.id);
   if (i < 0) state.notices.push(n); else state.notices[i] = n;
-  await db.put('notices', n); if (!silent) emit('notices');
+  await db.put('notices', n); if (!silent) emit('notices'); else saved('notices');
   return n;
 }
 export async function deleteNotice(id) {
@@ -258,7 +263,7 @@ export async function saveDiary(d, { silent = false } = {}) {
   d.updated = new Date().toISOString();
   const i = state.diary.findIndex(x => x.id === d.id);
   if (i < 0) state.diary.push(d); else state.diary[i] = d;
-  await db.put('diary', d); if (!silent) emit('diary');
+  await db.put('diary', d); if (!silent) emit('diary'); else saved('diary');
   return d;
 }
 export async function deleteDiary(id) {
@@ -273,7 +278,7 @@ export async function saveCreation(c, { silent = true } = {}) {
   c.updated = new Date().toISOString();
   const i = state.creations.findIndex(x => x.id === c.id);
   if (i < 0) state.creations.push(c); else state.creations[i] = c;
-  await db.put('creations', c); if (!silent) emit('creations');
+  await db.put('creations', c); if (!silent) emit('creations'); else saved('creations');
   return c;
 }
 export async function deleteCreation(id) {
@@ -288,7 +293,7 @@ export async function saveStock(item, { silent = false } = {}) {
   item.updated = new Date().toISOString();
   const i = state.stock.findIndex(x => x.id === item.id);
   if (i < 0) state.stock.push(item); else state.stock[i] = item;
-  await db.put('stock', item); if (!silent) emit('stock');
+  await db.put('stock', item); if (!silent) emit('stock'); else saved('stock');
   return item;
 }
 export async function deleteStock(id) {
