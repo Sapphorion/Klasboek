@@ -3,6 +3,7 @@ import { state, subjectById } from '../state.js';
 import { loadScript, download, safeName } from '../ui.js';
 import { docKit, ruledLines } from '../exporters.js';
 import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './model.js';
+import { bloomDocx } from './bloom.js';
 import { rubricMax } from './render.js';
 import { checkFor, trapRun } from '../aicheck.js';
 
@@ -136,14 +137,7 @@ export async function exportCreationDocx(c) {
       });
       rows.push(row([cell([para('')], W[0]), cell([para('Total', { bold: true })], W[1]), cell([para(String(total), { bold: true })], W[2]), ...(W[3] ? [cell([para('')], W[3])] : [])]));
       kids.push(table(W, rows));
-      if (c.type === 'test' && c.design?.grid) {
-        const G = [4200, 1700, 1700, 1760];
-        kids.push(heading('Cognitive level analysis', { size: 24 }), table(G, [
-          row(['Level', 'Marks', '% of paper', 'Target %'].map((t, i) => cell([para(t, { bold: true })], G[i], { fill: 'EEF2F0' })), { header: true }),
-          ...cogGrid(c).map(r => row([cell([para(`${r.level}. ${r.name}`)], G[0]), cell([para(String(r.marks))], G[1]), cell([para(`${r.pct}%`, { bold: Math.abs(r.pct - r.target) > 5, color: Math.abs(r.pct - r.target) > 5 ? 'B0281F' : undefined })], G[2]), cell([para(`${r.target}%`)], G[3])])),
-          row([cell([para('Total', { bold: true })], G[0]), cell([para(String(total), { bold: true })], G[1]), cell([para('100%', { bold: true })], G[2]), cell([para('')], G[3])]),
-        ]));
-      }
+      if (c.type === 'test' && c.design?.grid) kids.push(heading('Taxonomy levels', { size: 24 }), bloomDocx(k, c));
     }
     await k.save(kids, `${c.title} - ${subLine(c)}`);
     return;

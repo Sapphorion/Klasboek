@@ -6,6 +6,7 @@ import { numberBlocks, sectionTotals, totalMarks, cogGrid, isBlockDoc } from './
 import { checkFor, trapHtml } from '../aicheck.js';
 import { graphSvg } from './graph.js';
 import { coverById, coverHtml, coverHasInstructions } from './covers.js';
+import { bloomHtml, BLOOM_CSS } from './bloom.js';
 
 export const THEMES = [
   { id: 'classic', label: 'Classic', note: 'Formal, for tests and exams' },
@@ -117,6 +118,7 @@ export function themeCss() {
 .paper.t-ink .box{border-width:1px}
 .paper.t-ink .slide.title{background:#fff;color:#111;border:2px solid #111}
 .paper.t-ink .slide.title h2{color:#111}
+${BLOOM_CSS}
 @media print{.paper .ucover{margin:0}.paper{width:auto;padding:0}.paper .pb{border:0;margin:0;break-after:page}.paper .pb:after{display:none}.paper .cover{min-height:0;break-after:page}.paper .page{break-after:page}}
 `;
 }
@@ -226,14 +228,7 @@ function renderMemo(c, nums, total) {
     if (b.type === 'question') h += `<tr><td>${nums.get(i)}</td><td>${md(b.answer) || '&nbsp;'}</td><td>${+b.marks || 0}</td>${c.type === 'test' ? `<td>${esc(names[(+b.cog || 1) - 1] || 'Level ' + (b.cog || 1))}</td>` : ''}</tr>`;
   });
   h += `<tr><th></th><th>Total</th><th>${total}</th>${c.type === 'test' ? '<th></th>' : ''}</tr></table><p class="sub" style="font-size:.85em">✓ = 1 mark</p>`;
-  if (c.type === 'test' && c.design?.grid) {
-    h += `<h2>Cognitive level analysis</h2><table><tr><th>Level</th><th>Marks</th><th>% of paper</th><th>Target %</th></tr>`;
-    for (const r of cogGrid(c)) {
-      const off = Math.abs(r.pct - r.target) > 5;
-      h += `<tr><td>${r.level}. ${esc(r.name)}</td><td>${r.marks}</td><td class="${off ? 'lvl-off' : 'lvl-ok'}">${r.pct}%</td><td>${r.target}%</td></tr>`;
-    }
-    h += `<tr><th>Total</th><th>${total}</th><th>100%</th><th></th></tr></table><p class="sub" style="font-size:.85em">Targets are set in the designer. Check them against your subject’s CAPS and Programme of Assessment requirements.</p>`;
-  }
+  if (c.type === 'test' && c.design?.grid) h += `<h2>Taxonomy levels</h2>${bloomHtml(c)}`;
   return h;
 }
 

@@ -7,6 +7,8 @@ import { h, icon, toast, modal, confirmBox, busy, dropZone, esc } from '../ui.js
 import { aiCreate, aiRevise, aiReady, aiUnavailableReason, aiDiagram, aiCreateTest, aiTestSection } from '../ai.js';
 import { extractText, matchSubject } from '../importers.js';
 import { termWeekOf, today, fmt, addDays, mondayOf } from '../dates.js';
+import { standardiseLevels } from '../create/model.js';
+import { downloadBloomXlsx } from '../create/bloom.js';
 import { TYPES, typeInfo, isBlockDoc, BLOCKS, blockLabel, newBlock, templateCreation, blankCreation, applyAi, toAiJson, numberBlocks, totalMarks, cogGrid, COG_PRESETS, cogPresetFor, creationFromLesson, creationFromNotes } from '../create/model.js';
 import { THEMES, themeCss, renderCreation, printCreation, rubricMax } from '../create/render.js';
 import { exportCreationDocx, exportCreationPptx } from '../create/export.js';
@@ -365,6 +367,7 @@ function newDialog(type, pre = {}) {
 let pane = 'edit'; // on narrow screens: 'edit' | 'preview'
 function designer(root, c) {
   ensureCss();
+  if (standardiseLevels(c)) saveCreation(c);
   let selected = -1;
   const history = [];
   const snapshot = () => { history.push(JSON.stringify(c)); if (history.length > 25) history.shift(); undoBtn.disabled = false; };
@@ -435,7 +438,8 @@ function designer(root, c) {
   const titleIn = h('input', { class: 'title-input', value: c.title, 'aria-label': 'Title', oninput: e => { c.title = e.target.value; changed(); } });
   const exportBtns = h('div', { class: 'row wrap' },
     h('button', { class: 'btn', onclick: () => printCreation(c) }, icon('print'), c.type === 'slides' ? 'Print handout / PDF' : 'Print / PDF'),
-    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await withCover(await rasterise(c)))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)));
+    c.type !== 'slides' ? expBtn('Word', 'doc', async () => exportCreationDocx(await withCover(await rasterise(c)))) : expBtn('PowerPoint', 'slides', () => exportCreationPptx(c)),
+    c.type === 'test' ? expBtn('Taxonomy sheet', 'sheet', () => downloadBloomXlsx(c)) : null);
   const d = c.design;
   const toggle = (key, label) => h('label', { class: 'chip' }, h('input', { type: 'checkbox', checked: !!d[key], onchange: e => { d[key] = e.target.checked; changed(); } }), label);
   const buildDesignBar = () => h('div', { class: 'design-bar' },
@@ -445,7 +449,7 @@ function designer(root, c) {
     h('div', { class: 'chips' },
       ['test', 'worksheet', 'rubric'].includes(c.type) || (c.type === 'cards' && d.layout === 'wordsearch') ? toggle('header', 'Name and class lines') : null,
       ['test', 'worksheet'].includes(c.type) ? toggle('memo', 'Memo') : null,
-      c.type === 'test' ? toggle('grid', 'Cognitive-level grid') : null,
+      c.type === 'test' ? toggle('grid', 'Taxonomy levels sheet in the memo') : null,
       ['test', 'worksheet'].includes(c.type) ? coverSelect() : null,
       ['test', 'worksheet'].includes(c.type) ? (() => { const chk = checkFor(c); return h('label', { class: 'chip', title: `Hidden instruction asks AI tools to use “${chk.word}” ${chk.n} times` }, h('input', { type: 'checkbox', checked: !!chk.on, onchange: e => { chk.on = e.target.checked; changed(); } }), `Hidden AI check (“${chk.word}”)`); })() : null,
 
@@ -560,8 +564,8 @@ function designer(root, c) {
         ...[0, 1, 2, 3].map(i => h('div', { class: 'row' }, h('span', { class: 'muted' }, `${i + 1}.`),
           input(c.meta.levelNames[i], v => c.meta.levelNames[i] = v, { 'aria-label': `Level ${i + 1} name` }),
           input(c.meta.levelTargets[i], v => c.meta.levelTargets[i] = +v || 0, { type: 'number', min: 0, max: 100, class: 'num', 'aria-label': `Level ${i + 1} target` }), h('span', { class: 'muted' }, '%'))),
-        h('div', { class: 'row wrap' }, h('span', { class: 'hint' }, 'Starting values only. Set them to your subject’s CAPS / Programme of Assessment policy.'),
-          h('button', { class: 'link small', onclick: () => { const p = COG_PRESETS[preset]; c.meta.levelNames = [...p.names]; c.meta.levelTargets = [...p.targets]; structural(); } }, 'Reset to suggested'))),
+        h('div', { class: 'row wrap' }, h('span', { class: 'hint' }, 'The school’s standard taxonomy sheet: the same for every subject and grade.'),
+          h('button', { class: 'link small', onclick: () => { const p = COG_PRESETS[preset]; c.meta.levelNames = [...p.names]; c.meta.levelTargets = [...p.targets]; structural(); } }, 'Reset to the standard'))),
       cogBox);
   }
 

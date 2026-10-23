@@ -55,18 +55,29 @@ export function newBlock(type) {
 
 // ---------- Cognitive levels ----------
 // Starting targets only. Teachers should set these to their subject's CAPS / Programme of Assessment policy.
-export const COG_PRESETS = {
-  maths: { names: ['Knowledge', 'Routine procedures', 'Complex procedures', 'Problem solving'], targets: [20, 35, 30, 15] },
-  science: { names: ['Recall', 'Comprehension', 'Application and analysis', 'Evaluation and synthesis'], targets: [15, 40, 35, 10] },
-  language: { names: ['Literal', 'Reorganisation', 'Inference', 'Evaluation and appreciation'], targets: [20, 20, 40, 20] },
-  general: { names: ['Remembering', 'Understanding', 'Applying and analysing', 'Evaluating and creating'], targets: [30, 40, 20, 10] },
-};
-export function cogPresetFor(subjectName = '') {
-  const s = subjectName.toLowerCase();
-  if (/math|wisk/.test(s) && !/literacy|geletterd/.test(s)) return 'maths';
-  if (/physical|natural|technical sci|fisiese|natuurwet/.test(s)) return 'science';
-  if (/language|english|afrikaans|isixhosa|isizulu|sesotho|setswana|sepedi|huistaal|addisionele/.test(s)) return 'language';
-  return 'general';
+// The school's standard taxonomy sheet: the same four levels and desired percentages for every
+// subject and grade (Knowledge 25%, Routine procedures 45%, Complex procedures 20%, Problem solving 10%).
+export const STANDARD_LEVELS = { names: ['Knowledge', 'Routine procedures', 'Complex procedures', 'Problem solving'], targets: [25, 45, 20, 10] };
+export const COG_PRESETS = { standard: STANDARD_LEVELS, general: STANDARD_LEVELS };
+export function cogPresetFor() { return 'standard'; }
+// Tests made before the standard sheet used per-subject level names; move them over (custom names stay).
+const OLD_LEVEL_NAMES = [
+  ['Knowledge', 'Routine procedures', 'Complex procedures', 'Problem solving'],
+  ['Recall', 'Comprehension', 'Application and analysis', 'Evaluation and synthesis'],
+  ['Literal', 'Reorganisation', 'Inference', 'Evaluation and appreciation'],
+  ['Remembering', 'Understanding', 'Applying and analysing', 'Evaluating and creating'],
+];
+const OLD_TARGETS = [[20, 35, 30, 15], [15, 40, 35, 10], [20, 20, 40, 20], [30, 40, 20, 10]];
+export function standardiseLevels(c) {
+  if (!c?.meta || c.type !== 'test') return false;
+  const n = c.meta.levelNames || [], t = c.meta.levelTargets || [];
+  if (n.length && !OLD_LEVEL_NAMES.some(o => o.join('|') === n.join('|'))) return false; // the teacher named them: leave
+  const names = [...STANDARD_LEVELS.names];
+  // Old per-subject starting values become the standard ones; targets set from a PoA or by hand stay.
+  const targets = t.length !== 4 || OLD_TARGETS.some(o => o.join('|') === t.join('|')) ? [...STANDARD_LEVELS.targets] : t;
+  if (names.join('|') === n.join('|') && targets.join('|') === t.join('|')) return false;
+  c.meta.levelNames = names; c.meta.levelTargets = targets;
+  return true;
 }
 
 // ---------- Numbering and totals ----------
@@ -94,6 +105,7 @@ export function sectionTotals(blocks) {
 export const totalMarks = blocks => blocks.filter(b => b.type === 'question').reduce((a, b) => a + questionMarks(b), 0);
 
 export function cogGrid(c) {
+  standardiseLevels(c);
   const qs = (c.blocks || []).filter(b => b.type === 'question');
   const total = totalMarks(c.blocks || []) || 1;
   const names = c.meta?.levelNames || COG_PRESETS.general.names;
