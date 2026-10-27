@@ -1400,6 +1400,21 @@ dialog.modal.welcome .modal-body { padding: 1.75rem 1.75rem 1.5rem; display: gri
 .poa-pick select { max-width: 100%; }
 .poa-note { margin: .35rem 0 0; background: var(--paper); border-left: 3px solid var(--blue); padding: .4rem .6rem; border-radius: 0 var(--radius-s) var(--radius-s) 0; }
 
+/* Create: a few questions first */
+.ask-first { display: grid; gap: .9rem; }
+.ask-q { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem .8rem; margin: 0; background: var(--sheet); }
+.ask-q legend { font-weight: 600; padding: 0 .35rem; display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
+.ask-tag { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); font-weight: 600; }
+.ask-opts { display: grid; gap: .35rem; margin-top: .35rem; }
+.ask-opt { display: flex; gap: .55rem; align-items: flex-start; padding: .45rem .55rem; border-radius: 8px; cursor: pointer; }
+.ask-opt:hover { background: rgba(127, 127, 127, .08); }
+.ask-opt input[type=checkbox], .ask-opt input[type=radio] { width: 1.15rem; height: 1.15rem; margin-top: .1rem; flex: none; accent-color: var(--blue); }
+.ask-opt > span { display: grid; gap: .1rem; }
+.ask-label { display: inline-flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.ask-rec { font-size: .7rem; font-weight: 600; border: 1px solid var(--blue); color: var(--blue); border-radius: 999px; padding: 0 .45rem; }
+.ask-other { align-items: center; }
+.ask-other .ask-other-text { flex: 1; min-width: 8rem; }
+
 /* night:auto start */
 :root[data-theme="night"] .btn:hover { background: #212522; }
 :root[data-theme="night"] .btn.ghost:hover { background: #212522; }

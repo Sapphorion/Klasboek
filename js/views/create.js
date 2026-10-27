@@ -16,6 +16,7 @@ import { checkFor } from '../aicheck.js';
 import { graphSvg, cleanSvg, rasterise, compile } from '../create/graph.js';
 import { covers, coverById, openCoverEditor, coversSection, withCover } from '../create/covers.js';
 import { openChecker } from './checker.js';
+import { askFirst } from '../create/askfirst.js';
 
 // Pop-out menus close when you tap somewhere else.
 document.addEventListener('click', e => document.querySelectorAll('details.setup-menu[open], details.version-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }));
@@ -68,12 +69,14 @@ function askCard() {
     if (!text) { ta.focus(); return; }
     const r = parseRequest(text);
     if (adjust || !aiReady()) { newDialog(r.type, { ...r, extra: text }); return; }
+    const extra = await withAnswers(r.type, { ...r, extra: text });
+    if (extra === null) return;
     const live = h('span', { class: 'muted' });
     const onProg = e => { live.textContent = ' · ' + e.detail; };
     window.addEventListener('ai-progress', onProg);
     status.replaceChildren(h('p', { class: 'small' }, h('span', { class: 'spinner' }), ` Making a ${typeInfo(r.type).label.toLowerCase()}${r.subjectId ? ' · ' + subjectLabel(subjectById(r.subjectId)) : r.grade ? ' · Grade ' + r.grade : ''}${r.marks ? ' · ' + r.marks + ' marks' : ''}${r.time ? ' · ' + r.time + ' min' : ''}… about a minute.`, live));
     const done = busy(go, 'Making…');
-    try { await buildWithAi(r.type, { ...r, extra: text }); }
+    try { await buildWithAi(r.type, { ...r, extra }); }
     catch (e) { status.replaceChildren(h('p', { class: 'error small' }, e.message)); }
     finally { done(); window.removeEventListener('ai-progress', onProg); }
   };
@@ -144,8 +147,10 @@ async function fromLesson(l, type, btn) {
   const opts = { subjectId: l.subjectId, grade: s?.grade || '', atpId: l.atpId, title: '', lessonId: l.id,
     extra: [l.subtopic ? `Focus on: ${l.subtopic}.` : '', l.cls ? `For class ${l.cls}.` : ''].filter(Boolean).join(' '), topic: l.title };
   if (!aiReady()) { const t = templateCreation(type, { ...opts, title: l.title }); t.lessonId = l.id; await saveCreation(t); location.hash = 'create/' + t.id; toast('Template ready. Fill it in and design it.'); return; }
+  const extra = await withAnswers(type, opts);
+  if (extra === null) return;
   const done = busy(btn, 'Making…');
-  try { await buildWithAi(type, opts); } catch (e) { toast(e.message, 'error'); } finally { done(); }
+  try { await buildWithAi(type, { ...opts, extra }); } catch (e) { toast(e.message, 'error'); } finally { done(); }
 }
 
 function materialsList() {
@@ -169,6 +174,19 @@ function materialsList() {
     })) : h('p', { class: 'empty' }, state.creations.length ? 'Nothing matches.' : 'Nothing yet. Describe what you want above, or start from your planner.'));
   sec.className = 'mat-section';
   return sec;
+}
+
+// Ask the teacher a few questions about this request first (see create/askfirst.js).
+// Resolves with the request's instructions plus the answers, or null when the teacher cancels.
+async function withAnswers(type, o) {
+  const atp = o.atpId ? atpById(o.atpId) : null;
+  const answers = await askFirst(type, { subject: subjectById(o.subjectId)?.name, grade: o.grade, language: o.language,
+    topic: o.topic || o.title || atp?.topic || '', details: String(o.details ?? atp?.details ?? '').slice(0, 4000),
+    sourceText: String(o.sourceText || '').slice(0, 3000), extra: o.extra || '',
+    marks: ['test', 'worksheet'].includes(type) ? (o.marks || (type === 'test' ? 50 : 20)) : 0, time: type === 'test' ? (o.time || 60) : 0,
+    count: o.count || 0, length: o.length, levelsCount: o.levelsCount });
+  if (answers === null) return null;
+  return [o.extra || '', answers].filter(Boolean).join('\n\n');
 }
 
 // Build a material with AI and open it.
@@ -345,8 +363,11 @@ function newDialog(type, pre = {}) {
     const poaTask = MULTI ? taskById(subj, f.poaId) : null;
     if (poaTask) { opts.poa = describeTask(subj, poaTask); opts.poaTask = poaTask; }
     if (useAi) {
+      const all = { ...opts, extra: [opts.poa || '', opts.multi > 1 ? `Cover all ${opts.multi} topics listed, spreading the marks fairly across them.` : '', f.extra].filter(Boolean).join(' '), marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language };
+      const extra = await withAnswers(type, all);
+      if (extra === null) return;
       const done = busy(btn, 'Writing… about a minute');
-      try { await buildWithAi(type, { ...opts, extra: [opts.poa || '', opts.multi > 1 ? `Cover all ${opts.multi} topics listed, spreading the marks fairly across them.` : '', f.extra].filter(Boolean).join(' '), marks: f.marks, time: f.time, count: f.count, length: f.length, levelsCount: f.levelsCount, language: f.language }); m.close(); }
+      try { await buildWithAi(type, { ...all, extra }); m.close(); }
       catch (e) { toast(e.message, 'error'); } finally { done(); }
       return;
     }

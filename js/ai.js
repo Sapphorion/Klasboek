@@ -576,6 +576,32 @@ export async function aiCreate(type, o) {
   });
 }
 
+// ---------- Ask first ----------
+// Before anything is written, Claude asks the teacher 2-4 short questions about this particular
+// request, each with answers to tick (the best ones already ticked), like a colleague would.
+const ASK_SCHEMA = { type: 'object', properties: { questions: { type: 'array', description: '2 to 4 questions', items: { type: 'object', properties: {
+  short: { type: 'string', description: 'A 1-3 word label, e.g. "Question types"' },
+  question: { type: 'string', description: 'The question, short and plain, ending with a question mark' },
+  multi: { type: 'boolean', description: 'true when the teacher may tick several answers' },
+  options: { type: 'array', description: '2 to 5 answers', items: { type: 'object', properties: {
+    label: { type: 'string', description: 'A few words' },
+    detail: { type: 'string', description: 'Optional: one short line explaining it' },
+    recommended: { type: 'boolean', description: 'Ticked to start with: what you would do' },
+  }, required: ['label'] } },
+}, required: ['question', 'options'] } } }, required: ['questions'] };
+
+export async function aiAskFirst(type, o) {
+  const what = { test: 'test or exam', worksheet: 'worksheet', notes: 'learner notes', slides: 'slide deck', rubric: 'rubric', cards: 'set of flashcards' }[type] || type;
+  const r = await call({
+    system: `You are an experienced South African teacher helping a colleague make a CAPS-aligned ${what}. Before it is written, ask the 2 to 4 questions whose answers would most change what you make for THIS request, so it fits their class. Each question has 2 to 5 short answers the teacher can tick. Mark what you would do as recommended (at least one per question). Use "multi" when several answers make sense together (e.g. question types). Do not ask about anything the request already settles (subject, grade, marks, time, topics, number of questions) and do not ask for things only the teacher could type (names, dates). Good things to ask about, when they matter here: the mix of question types; difficulty and support for weaker or stronger learners; real-life South African contexts; diagrams, graphs, tables or data; how detailed the memo is; language level or English second language; activities, homework or extension work; layout (answer spaces, one page). Keep the wording plain and short, as a teacher would say it. ${o.language && o.language !== 'English' ? `Write the questions and answers in ${o.language}.` : 'Write in South African English.'}`,
+    content: brief(type, o),
+    tool: { name: 'ask_teacher', description: 'The questions to ask the teacher', schema: ASK_SCHEMA },
+    maxTokens: 3000,
+  });
+  return (r.questions || []).filter(q => q && q.question && (q.options || []).length >= 2).slice(0, 4)
+    .map(q => ({ short: q.short || '', question: q.question, multi: !!q.multi, options: q.options.filter(x => x && x.label).slice(0, 6) }));
+}
+
 // ---------- Tests, written one question at a time ----------
 // A whole 50-mark paper in one go is long enough to time out or come back cut off. So: plan the
 // paper first (small), then write each QUESTION separately (with a retry), then draw the diagrams.

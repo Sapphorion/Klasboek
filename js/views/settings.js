@@ -97,12 +97,14 @@ function view() {
         ai?.enabled ? 'Your school pays for it, so you don’t need an API key. ' : 'Your school hasn’t switched it on yet; ask the office. ', 'Without it, templates still work offline.'),
       ai?.enabled ? h('p', {}, `This month you’ve used ${rand(ai.used_zar)}${ai.cap_zar ? ` of your ${rand(ai.cap_zar)}` : ''}.`, ai.school_left ? '' : ' The school’s budget for this month is used up.') : null,
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.createAsk !== false, onchange: e => saveSettings({ createAsk: e.target.checked }) }), 'In Create, ask me a few questions (with answers to tick) before writing'),
       h('div', { class: 'form-grid' },
         field('Model', h('select', { onchange: e => saveSettings({ model: e.target.value }) }, allowed.map(m => h('option', { value: m.id, selected: m.id === s.model }, m.label)))))));
   } else
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'AI writing (Claude)'),
     h('p', { class: 'muted small' }, 'AI writes full lesson plans, slides and worksheets with memos, and reads hard-to-parse ATPs and timetable photos. It needs internet and a Claude API key from console.anthropic.com (you pay per use). Without it, templates still work offline.'),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.createAsk !== false, onchange: e => saveSettings({ createAsk: e.target.checked }) }), 'In Create, ask me a few questions (with answers to tick) before writing'),
     h('div', { class: 'form-grid' },
       field('Claude API key', h('div', { class: 'row' }, keyIn, testBtn), 'Stored only on this device and never included in backups.'),
       field('Model', h('select', { onchange: e => saveSettings({ model: e.target.value }) }, MODELS.map(m => h('option', { value: m.id, selected: m.id === s.model }, m.label)))))));
