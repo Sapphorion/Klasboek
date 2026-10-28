@@ -38,7 +38,7 @@ function view() {
   if (state.settings.edition !== 'uni') page.append(schoolSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
-      field('Klasboek is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation and lab stock.'); } },
+      field('Klasboek is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation' + (inSkoolHuis ? '' : ' and lab stock') + '.'); } },
         h('option', { value: 'school', selected: s.edition !== 'uni' }, 'A school teacher'), h('option', { value: 'uni', selected: s.edition === 'uni' }, 'A university lecturer')), 'Changes the menu and the words used. Your work stays as it is.'),
       field('Your name', h('input', { value: s.teacherName, placeholder: 'e.g. Mr S. Botha', onchange: e => saveSettings({ teacherName: e.target.value.trim() }) })),
       field('School', h('input', { value: s.school, placeholder: 'e.g. Walmer High School', onchange: e => saveSettings({ school: e.target.value.trim() }) })),

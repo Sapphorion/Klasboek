@@ -35,7 +35,8 @@ const ROUTES = [
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
   { id: 'moderation', only: 'school', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
-  { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock },
+  // Lab stock is for a teacher's own Klasboek; inside Skool Huis each classroom's inventory is kept in Skool Huis itself.
+  { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock, standalone: true },
   { id: 'progress', only: 'school', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
   { id: 'materials', only: 'school', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
   { id: 'attendance', label: 'Attendance', short: 'Attend', icon: 'people', render: renderAttendance, only: 'uni' },
@@ -47,7 +48,7 @@ let current = null, cleanup = null;
 
 function route() {
   const [id, ...rest] = (location.hash.slice(1) || state.settings.home || 'today').split('/');
-  const r = ROUTES.find(r => r.id === id && (!r.only || r.only === edition())) || ROUTES.find(r => r.id === 'planner');
+  const r = ROUTES.find(r => r.id === id && (!r.only || r.only === edition()) && !(r.standalone && inSkoolHuis)) || ROUTES.find(r => r.id === 'planner');
   document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.id === r.id ? 'page' : 'false'));
   document.querySelectorAll('dialog.modal[open] > header .icon-btn').forEach(b => b.click()); // leaving the page closes pop-ups
   if (cleanup) { cleanup(); cleanup = null; }
@@ -65,7 +66,7 @@ function buildNav() {
   const ul = document.getElementById('nav');
   ul.replaceChildren();
   for (const r of ROUTES) {
-    if (r.hidden || (r.only && r.only !== edition())) continue;
+    if (r.hidden || (r.only && r.only !== edition()) || (r.standalone && inSkoolHuis)) continue;
     ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id, 'aria-label': r.label }, icon(r.icon, 20), h('span', { class: 'long' }, r.label), h('span', { class: 'short', 'aria-hidden': 'true' }, r.short))));
   }
   // Inside Skool Huis: a way back to the school's app.
