@@ -38,7 +38,7 @@ function view() {
   if (state.settings.edition !== 'uni') page.append(schoolSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
-      field('Klasboek is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation' + (inSkoolHuis ? '' : ' and lab stock') + '.'); } },
+      field('Teacher’s Desk is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation' + (inSkoolHuis ? '' : ' and lab stock') + '.'); } },
         h('option', { value: 'school', selected: s.edition !== 'uni' }, 'A school teacher'), h('option', { value: 'uni', selected: s.edition === 'uni' }, 'A university lecturer')), 'Changes the menu and the words used. Your work stays as it is.'),
       field('Your name', h('input', { value: s.teacherName, placeholder: 'e.g. Mr S. Botha', onchange: e => saveSettings({ teacherName: e.target.value.trim() }) })),
       field('School', h('input', { value: s.school, placeholder: 'e.g. Walmer High School', onchange: e => saveSettings({ school: e.target.value.trim() }) })),
@@ -65,7 +65,7 @@ function view() {
 
   // ---------- Planner ----------
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Planner'),
-    field('Open Klasboek on', h('select', { onchange: e => saveSettings({ home: e.target.value }) },
+    field('Open Teacher’s Desk on', h('select', { onchange: e => saveSettings({ home: e.target.value }) },
       h('option', { value: 'today', selected: (s.home || 'today') === 'today' }, 'Today: lessons, to-dos and warnings'),
       h('option', { value: 'planner', selected: s.home === 'planner' }, 'The planner'))),
     field('Layout', h('select', { onchange: e => saveSettings({ plannerLayout: e.target.value }) },
@@ -112,18 +112,18 @@ function view() {
   // ---------- Backup ----------
   const restoreIn = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: async () => {
     const f = restoreIn.files[0]; if (!f) return;
-    if (!await confirmBox('Restoring replaces everything in Klasboek on this device with the backup.', 'Restore backup')) return;
+    if (!await confirmBox('Restoring replaces everything in Teacher’s Desk on this device with the backup.', 'Restore backup')) return;
     try { await importBackup(f); await loadState(); ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary', 'stock'].forEach(emit); toast('Backup restored.'); location.hash = 'planner'; }
     catch (e) { toast(e.message, 'error'); }
   } });
   const backupBtn = h('button', { class: 'btn' }, icon('download'), 'Download backup');
   backupBtn.onclick = async () => { const done = busy(backupBtn, 'Packing…'); try { download(await exportBackup(), `klasboek-backup-${new Date().toISOString().slice(0, 10)}.json`); } finally { done(); } };
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Install on your devices'),
-    h('p', { class: 'muted small' }, 'Put Klasboek on your PC, Android phone or tablet, or Amazon Fire tablet. It opens like a normal app and works offline.'),
+    h('p', { class: 'muted small' }, 'Put Teacher’s Desk on your PC, Android phone or tablet, or Amazon Fire tablet. It opens like a normal app and works offline.'),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn', onclick: openInstall }, icon('download'), 'How to install'),
       h('button', { class: 'btn ghost', onclick: () => window.dispatchEvent(new Event('klasboek-update-now')) }, 'Check for updates')),
-    (() => { const v = h('p', { class: 'muted small' }); caches?.keys?.().then(k => { const n = k.filter(x => x.startsWith('klasboek-v')).map(x => +x.slice(10)).sort((a, b) => b - a)[0]; if (n) v.textContent = `You have version ${n}. Check for updates fetches the newest version and reloads Klasboek. Your work stays on this device.`; }).catch(() => {}); return v; })()));
+    (() => { const v = h('p', { class: 'muted small' }); caches?.keys?.().then(k => { const n = k.filter(x => x.startsWith('klasboek-v')).map(x => +x.slice(10)).sort((a, b) => b - a)[0]; if (n) v.textContent = `You have version ${n}. Check for updates fetches the newest version and reloads Teacher’s Desk. Your work stays on this device.`; }).catch(() => {}); return v; })()));
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'Backup'),
     h('p', { class: 'muted small' }, 'Everything is saved in this browser on this device. Download a backup regularly (and before clearing your browser), and restore it to move to another device.'),
     h('div', { class: 'row wrap' }, backupBtn, h('button', { class: 'btn ghost', onclick: () => restoreIn.click() }, icon('upload'), 'Restore from backup'), restoreIn)));

@@ -1,4 +1,4 @@
-// Klasboek for schools, or for university lecturers. The lecturer edition shows only the pages a lecturer
+// Teacher’s Desk for schools, or for university lecturers. The lecturer edition shows only the pages a lecturer
 // needs (with Attendance) and speaks university: modules, lectures, students, year of study.
 import { state } from './state.js';
 

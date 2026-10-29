@@ -1,12 +1,12 @@
-// Connect to my school: Klasboek signs in to Skool Huis, the school's own system,
+// Connect to my school: Teacher’s Desk signs in to Skool Huis, the school's own system,
 // with the teacher's Skool Huis account.
 //
 // What comes in: term dates, the school calendar, the teacher's mark sheets
 // (for moderation) and the school inventory. Learner names are fetched when
-// needed and are not stored in Klasboek's own data, so they never go to a
+// needed and are not stored in Teacher’s Desk’s own data, so they never go to a
 // teacher's personal GitHub or Google sync.
 //
-// The sign-in lives in this browser's localStorage (not in Klasboek's
+// The sign-in lives in this browser's localStorage (not in Teacher’s Desk’s
 // database), so it is never part of a backup, a GitHub sync or a Google sync.
 
 import { SKOOLHUIS } from './config.js';
@@ -75,7 +75,7 @@ async function skoolHuisToken() {
   return navigator.locks ? navigator.locks.request(`lock:${SB_KEY}`, refresh) : refresh();
 }
 
-/** Inside Skool Huis: link Klasboek to the teacher's school (no separate sign-in). */
+/** Inside Skool Huis: link Teacher’s Desk to the teacher's school (no separate sign-in). */
 export async function linkToSkoolHuis() {
   if (!inSkoolHuis) return;
   const sess = skoolHuisSession();
@@ -160,7 +160,7 @@ const dayOf = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: SAST 
 const timeOf = iso => new Date(iso).toLocaleTimeString('en-GB', { timeZone: SAST, hour: '2-digit', minute: '2-digit' });
 const TYPE = { exam: 'exam', holiday: 'holiday', meeting: 'meeting', sport: 'event', extra_class: 'event', event: 'event' };
 
-/** A Skool Huis calendar occurrence as a Klasboek event (or null if cancelled). */
+/** A Skool Huis calendar occurrence as a Teacher’s Desk event (or null if cancelled). */
 export function toEvent(o) {
   if (o.status === 'cancelled') return null;
   const date = dayOf(o.starts_at);
@@ -229,7 +229,7 @@ export const inventory = tab => rpc('inventory_list', { p_school: school().schoo
 export const adjustStock = (item, change, reason) => rpc('adjust_stock', { p_item: item, p_change: change, p_reason: reason || null });
 export const saveItem = item => rpc('save_inventory_item', { p_school: school().school.id, p_item: item });
 
-/** A Klasboek lab stock item as a Skool Huis lab item. */
+/** A Teacher’s Desk lab stock item as a Skool Huis lab item. */
 export function toSchoolItem(it, area) {
   const n = v => (v === '' || v == null || isNaN(+v) ? null : +v);
   return {
@@ -259,7 +259,7 @@ export async function refreshSchoolAi() {
 /** Sends a Claude request through the school's AI (Skool Huis pays, within its budget). */
 export async function schoolAiFetch(request) {
   const s = school();
-  if (!s) throw new SchoolError('Klasboek isn’t linked to your school yet. Try again in a moment.');
+  if (!s) throw new SchoolError('Teacher’s Desk isn’t linked to your school yet. Try again in a moment.');
   const t = await token();
   try {
     return await fetch(`${SKOOLHUIS.url}/functions/v1/ai`, {

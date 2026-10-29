@@ -501,7 +501,7 @@ function designer(root, c) {
         d.cover = v === 'generated' ? true : v || false; changed(); drawTop();
       } },
         h('option', { value: '', selected: !val }, 'None'),
-        c.type === 'test' ? h('option', { value: 'generated', selected: val === 'generated' }, 'Klasboek cover') : null,
+        c.type === 'test' ? h('option', { value: 'generated', selected: val === 'generated' }, 'Teacher’s Desk cover') : null,
         list.map(cv => h('option', { value: cv.id, selected: val === cv.id }, cv.name)),
         h('option', { value: '__upload' }, 'Upload the school’s cover sheet…')));
   }

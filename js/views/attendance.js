@@ -1,5 +1,5 @@
-// Attendance: Roll Call (student card scanning, rotating lecture QR, registers and records) inside Klasboek.
-// It keeps its registers in this site's storage; Klasboek includes them in backups and in your account.
+// Attendance: Roll Call (student card scanning, rotating lecture QR, registers and records) inside Teacher’s Desk.
+// It keeps its registers in this site's storage; Teacher’s Desk includes them in backups and in your account.
 import { h } from '../ui.js';
 
 export function renderAttendance(root) {

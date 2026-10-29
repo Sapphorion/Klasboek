@@ -1,6 +1,6 @@
-// Offline support: every app file is cached on install, so Klasboek opens with no internet.
+// Offline support: every app file is cached on install, so Teacher’s Desk opens with no internet.
 // Bump VERSION whenever you change any file so teachers get the update.
-const VERSION = 'klasboek-v59';
+const VERSION = 'klasboek-v60';
 const FILES = [
   './',
   './fonts/atkinson-hyperlegible-latin-400-italic.woff2',

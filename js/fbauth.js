@@ -1,5 +1,5 @@
-// Sign in with Google (Firebase) and keep your Klasboek in your account, so it's there on every
-// device you sign in on. The Firebase code only loads when you use it, so Klasboek still opens offline.
+// Sign in with Google (Firebase) and keep your Teacher’s Desk in your account, so it's there on every
+// device you sign in on. The Firebase code only loads when you use it, so Teacher’s Desk still opens offline.
 import { FIREBASE_CONFIG } from './config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.14.1/';
@@ -54,7 +54,7 @@ export function initFirebase() {
 }
 
 export async function googleSignIn() {
-  if (!fbConfigured()) throw new Error('Google sign-in isn’t set up for Klasboek yet.');
+  if (!fbConfigured()) throw new Error('Google sign-in isn’t set up for Teacher’s Desk yet.');
   if (!navigator.onLine) throw new Error('You need internet to sign in.');
   const { s, auth } = await initFirebase();
   const provider = new s.GoogleAuthProvider();

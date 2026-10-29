@@ -1,6 +1,6 @@
 {
-  "name": "Klasboek – lesson planner",
-  "short_name": "Klasboek",
+  "name": "Teacher’s Desk – lesson planner",
+  "short_name": "Teacher’s Desk",
   "description": "Plan lessons from your ATP and timetable, make lesson plans, worksheets and slides, and run moderation. Works offline.",
   "start_url": "./#planner",
   "scope": "./",

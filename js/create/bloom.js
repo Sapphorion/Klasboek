@@ -116,7 +116,7 @@ export function bloomSheetXml(c, shell) {
 
 export async function bloomXlsxBlob(c) {
   const res = await fetch('vendor/bloom-template.xlsx');
-  if (!res.ok) throw new Error('Couldn’t load the taxonomy sheet template. Open Klasboek online once, then try again.');
+  if (!res.ok) throw new Error('Couldn’t load the taxonomy sheet template. Open Teacher’s Desk online once, then try again.');
   const files = await readZip(new Uint8Array(await res.arrayBuffer()));
   const dec = new TextDecoder();
   files.set('xl/worksheets/sheet1.xml', bloomSheetXml(c, dec.decode(files.get('xl/worksheets/sheet1.xml'))));

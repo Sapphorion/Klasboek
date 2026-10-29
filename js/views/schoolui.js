@@ -1,4 +1,4 @@
-// Klasboek's side of "Connect to my school" (Skool Huis): the Settings section,
+// Teacher’s Desk’s side of "Connect to my school" (Skool Huis): the Settings section,
 // moderation mark sheets from the school mark book, and the school inventory.
 import { state, saveModeration, deleteStock } from '../state.js';
 import { h, icon, toast, modal, busy, confirmBox } from '../ui.js';
@@ -32,7 +32,7 @@ export function schoolSection() {
         finally { done(); }
       } }, icon('link', 16), 'Connect');
       sec.replaceChildren(h('h2', {}, 'Your school'),
-        h('p', { class: 'muted small' }, 'If your school uses Skool Huis, sign in with your Skool Huis teacher account. Klasboek then brings in the term dates and the school calendar, makes moderation mark sheets from your Skool Huis mark book, and shows the school’s lab stock and equipment. Learner names are only fetched when you need them and aren’t kept in your Klasboek sync.'),
+        h('p', { class: 'muted small' }, 'If your school uses Skool Huis, sign in with your Skool Huis teacher account. Teacher’s Desk then brings in the term dates and the school calendar, makes moderation mark sheets from your Skool Huis mark book, and shows the school’s lab stock and equipment. Learner names are only fetched when you need them and aren’t kept in your Teacher’s Desk sync.'),
         h('div', { class: 'form-grid' }, field('Skool Huis email', email), field('Password', pw)),
         msg, h('div', { class: 'row' }, go));
       return;
@@ -48,15 +48,15 @@ export function schoolSection() {
     } }, icon('refresh', 16), 'Bring in now');
     sec.replaceChildren(h('h2', {}, 'Your school'),
       h('p', {}, inSkoolHuis ? 'Linked through Skool Huis to ' : 'Connected to ', h('strong', {}, s.school.name), ` as ${s.email} (${s.role === 'admin' ? 'office' : 'teacher'}).`),
-      inSkoolHuis ? h('p', { class: 'muted small' }, 'You opened Klasboek from Skool Huis, so it uses your Skool Huis sign-in. Your planner is kept separately for your account, so colleagues on this computer don’t see it.') : null,
+      inSkoolHuis ? h('p', { class: 'muted small' }, 'You opened Teacher’s Desk from Skool Huis, so it uses your Skool Huis sign-in. Your planner is kept separately for your account, so colleagues on this computer don’t see it.') : null,
       s.schools.length > 1 ? field('School', h('select', { onchange: e => { chooseSchool(e.target.value); draw(); } },
         s.schools.map(x => h('option', { value: x.id, selected: x.id === s.school.id }, x.name)))) : null,
-      h('p', { class: 'muted small' }, `Term dates and the school calendar last brought in: ${when(s.pulledAt)}. It happens by itself every few hours while Klasboek is open.`),
+      h('p', { class: 'muted small' }, `Term dates and the school calendar last brought in: ${when(s.pulledAt)}. It happens by itself every few hours while Teacher’s Desk is open.`),
       h('div', { class: 'row wrap' }, pullBtn,
         inSkoolHuis ? h('a', { class: 'btn ghost sm', href: schoolLink() }, icon('left', 16), 'Back to Skool Huis')
           : h('a', { class: 'btn ghost sm', href: schoolLink(), target: '_blank', rel: 'noopener' }, icon('external', 16), 'Open Skool Huis'),
         inSkoolHuis ? null : h('button', { class: 'btn ghost sm', onclick: async () => {
-          if (!await confirmBox('Disconnect this device from your school? The school calendar events are removed from Klasboek; everything else stays.', 'Disconnect')) return;
+          if (!await confirmBox('Disconnect this device from your school? The school calendar events are removed from Teacher’s Desk; everything else stays.', 'Disconnect')) return;
           await disconnect(); toast('Disconnected.'); draw();
         } }, 'Disconnect')));
   };

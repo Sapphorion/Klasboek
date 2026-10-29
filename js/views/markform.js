@@ -30,7 +30,7 @@ const off = (m, r, key) => key !== 'red' && val(r[key]) != null && val(r.red) !=
 export function sheetsTab(page) {
   const status = h('div', { 'aria-live': 'polite' });
   page.append(h('div', { class: 'mod-start' },
-    h('p', { class: 'muted' }, 'Upload a mark sheet or a class register. Klasboek makes a form with a column for your red marks, then green and orange moderation, and purple if you need it. Type the marks in and print or download it in colour.'),
+    h('p', { class: 'muted' }, 'Upload a mark sheet or a class register. Teacher’s Desk makes a form with a column for your red marks, then green and orange moderation, and purple if you need it. Type the marks in and print or download it in colour.'),
     dropZone({ accept: '.xlsx,.xls,.csv,.docx,.pdf', label: 'Upload a mark sheet or register', hint: 'Excel, CSV, Word table or a text PDF (e.g. an SA-SAMS class list).', onFiles: async ([file]) => {
       status.replaceChildren(h('span', { class: 'spinner' }), ` Reading ${file.name}…`);
       try { const sheet = await readMarksheet(file); status.replaceChildren(); setupSheet(sheet, file.name); }

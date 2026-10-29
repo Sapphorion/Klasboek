@@ -35,7 +35,7 @@ const ROUTES = [
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
   { id: 'moderation', only: 'school', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
-  // Lab stock is for a teacher's own Klasboek; inside Skool Huis each classroom's inventory is kept in Skool Huis itself.
+  // Lab stock is for a teacher's own Teacher’s Desk; inside Skool Huis each classroom's inventory is kept in Skool Huis itself.
   { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock, standalone: true },
   { id: 'progress', only: 'school', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
   { id: 'materials', only: 'school', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
@@ -55,7 +55,7 @@ function route() {
   main.innerHTML = '';
   current = r;
   cleanup = r.render(main, rest) || null;
-  document.title = `${r.label} · Klasboek`;
+  document.title = `${r.label} · Teacher’s Desk`;
   if (isUni()) document.title = document.title.replace('School calendar', 'Academic calendar').replace('Subjects & ATPs', 'Modules');
 }
 
@@ -85,7 +85,7 @@ installBtn.hidden = isInstalled();
 installBtn.addEventListener('click', openInstall);
 onInstallChange(() => { installBtn.hidden = isInstalled(); });
 
-// Fetch the newest Klasboek straight away and reload (instead of waiting for the next start).
+// Fetch the newest Teacher’s Desk straight away and reload (instead of waiting for the next start).
 async function updateNow() {
   if (!navigator.onLine) { toast('You need internet to get the newest version.', 'warn'); return; }
   const el = document.getElementById('app-version'); if (el) el.textContent = 'Updating…';
@@ -164,14 +164,14 @@ async function start() {
     const reload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController) return;
-      // Just opened, or not on screen: reload straight away. In the middle of work: offer it, and do it when Klasboek is next put away.
+      // Just opened, or not on screen: reload straight away. In the middle of work: offer it, and do it when Teacher’s Desk is next put away.
       if (document.hidden || Date.now() - started < 20000) return reload();
-      toast('A new version of Klasboek is ready.', 'ok', { action: { label: 'Reload', run: reload } });
+      toast('A new version of Teacher’s Desk is ready.', 'ok', { action: { label: 'Reload', run: reload } });
       document.addEventListener('visibilitychange', () => { if (document.hidden) reload(); });
     });
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.update().catch(() => {});
-      // Klasboek often stays open for days on a tablet: look for a new version whenever it comes back on screen.
+      // Teacher’s Desk often stays open for days on a tablet: look for a new version whenever it comes back on screen.
       let last = Date.now();
       document.addEventListener('visibilitychange', () => { if (!document.hidden && navigator.onLine && Date.now() - last > 60000) { last = Date.now(); reg.update().catch(() => {}); } });
       setInterval(() => { if (navigator.onLine) reg.update().catch(() => {}); }, 30 * 60000);

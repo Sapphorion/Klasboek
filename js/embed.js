@@ -1,9 +1,9 @@
-// Klasboek inside Skool Huis. When Klasboek is opened from the school's Skool Huis site
-// (skoolhuis.netlify.app/klasboek/), it is the teacher's own Klasboek with their Skool Huis
+// Teacher’s Desk inside Skool Huis. When Teacher’s Desk is opened from the school's Skool Huis site
+// (skoolhuis.netlify.app/klasboek/), it is the teacher's own Teacher’s Desk with their Skool Huis
 // sign-in: no second login, and it is linked to the school straight away.
 //
-// Several teachers may use the same staffroom computer, so each teacher's Klasboek data
-// (the database and everything Klasboek keeps in localStorage) is kept apart by their
+// Several teachers may use the same staffroom computer, so each teacher's Teacher’s Desk data
+// (the database and everything Teacher’s Desk keeps in localStorage) is kept apart by their
 // Skool Huis account. Nobody sees another teacher's planner.
 //
 // This module must load before anything else touches storage (it is the first import in app.js).
@@ -31,7 +31,7 @@ export function skoolHuisSession() {
 }
 
 const startUser = inSkoolHuis ? skoolHuisSession()?.user || null : null;
-/** The Skool Huis teacher this Klasboek belongs to (null outside Skool Huis). */
+/** The Skool Huis teacher this Teacher’s Desk belongs to (null outside Skool Huis). */
 export const embeddedUser = startUser ? { id: startUser.id, email: startUser.email } : null;
 /** Added to the database name so each teacher has their own. */
 export const storageSuffix = embeddedUser ? `-${embeddedUser.id}` : '';

@@ -83,7 +83,7 @@ export async function exportBackup() {
 
 export async function importBackup(file) {
   const json = JSON.parse(await file.text());
-  if (json.app !== 'klasboek') throw new Error('This file is not a Klasboek backup.');
+  if (json.app !== 'klasboek') throw new Error('This file is not a Teacher’s Desk backup.');
   const keepKey = (await db.get('kv', 'settings'))?.apiKey || '';
   for (const s of STORES) {
     await db.clear(s);

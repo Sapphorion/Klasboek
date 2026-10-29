@@ -1,4 +1,4 @@
-// Calendar files (.ics) for Google Calendar and Outlook: build one from Klasboek, read one from them.
+// Calendar files (.ics) for Google Calendar and Outlook: build one from Teacher’s Desk, read one from them.
 import { state, subjectById, classLabel } from './state.js';
 import { addDays, iso, parse } from './dates.js';
 import { allEvents, typeOf } from './events.js';
@@ -21,11 +21,11 @@ function timesOf(t) {
 
 export const FROM_EXTERNAL = /^(Google|Outlook|Calendar file)/;
 
-// Everything Klasboek knows from `from` to `to`: calendar events, diary entries on the calendar,
+// Everything Teacher’s Desk knows from `from` to `to`: calendar events, diary entries on the calendar,
 // moderation deadlines, and (optionally) your planned lessons at their period times.
 export function buildIcs({ from, to, lessons = false, events = true }) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Klasboek//Teacher planner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Klasboek'];
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Teachers Desk//Teacher planner//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Teacher’s Desk'];
   let n = 0;
   const ev = (uid, date, endDate, time, title, desc, cat) => {
     L.push('BEGIN:VEVENT', `UID:${uid}@klasboek`, `DTSTAMP:${stamp}`);
@@ -96,7 +96,7 @@ function expand(start, rrule, until) {
   return out;
 }
 
-// Returns events in Klasboek's shape, between `from` and `to`.
+// Returns events in Teacher’s Desk’s shape, between `from` and `to`.
 export function parseIcs(text, { from, to, source = 'Calendar file' } = {}) {
   const lines = unfold(text).split('\n');
   const out = [];
@@ -136,7 +136,7 @@ export function parseIcs(text, { from, to, source = 'Calendar file' } = {}) {
     if (name === 'EXDATE') (cur.EXDATE ||= []).push({ v, p: params.join(';') });
     else cur[name] = { v, p: params.join(';') };
   }
-  // Klasboek's own events (sent out earlier) shouldn't come back in.
+  // Teacher’s Desk’s own events (sent out earlier) shouldn't come back in.
   return out.filter(e => !/@klasboek$/.test(e.extUid.split('#')[0]));
 }
 

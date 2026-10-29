@@ -34,7 +34,7 @@ export function formatsSection(onSaved) {
     const list = formats();
     fill(sec, 
       h('h2', {}, 'School formats'),
-      h('p', { class: 'muted small' }, 'Upload the Word or Excel form your school wants planning handed in on: a lesson plan form, a weekly planner (days and periods) or a term planning sheet. Keep planning in Klasboek as usual; when it’s due, download it already filled in on the school’s form.'),
+      h('p', { class: 'muted small' }, 'Upload the Word or Excel form your school wants planning handed in on: a lesson plan form, a weekly planner (days and periods) or a term planning sheet. Keep planning in Teacher’s Desk as usual; when it’s due, download it already filled in on the school’s form.'),
       list.length ? h('ul', { class: 'format-list' }, ...list.map(f => h('li', {},
         h('span', { class: 'fl-ic' }, icon('doc', 20)),
         h('div', { class: 'fl-main' }, h('strong', {}, f.name), h('span', { class: 'muted small' }, `${app(f)} · ${KIND[f.kind] || ''} · ${filled(f)} places filled in${weeklyFormat()?.id === f.id ? ' · Weekly planner button on the planner' : ''}`)),
@@ -42,7 +42,7 @@ export function formatsSection(onSaved) {
           h('button', { class: 'btn sm', onclick: () => openFormatDownload({ formatId: f.id }) }, icon('download', 16), 'Download planning'),
           h('button', { class: 'btn ghost sm', onclick: () => openFormatSetup(f, false, draw) }, 'Check the blanks'),
           h('button', { class: 'link small danger', onclick: async () => { if (!await confirmBox(`Delete the school format “${f.name}”? Your planning isn’t affected.`)) return; await saveFormats(formats().filter(x => x.id !== f.id)); draw(); } }, 'Delete'))))) : null,
-      dropZone({ accept: '.docx,.xlsx,.xlsm,.doc,.xls,.pdf', label: list.length ? 'Add another school format' : 'Upload your school’s planning form', hint: 'Word (.docx) or Excel (.xlsx). Klasboek finds the blanks next to labels like Topic, Date, Objectives, and week grids of days and periods.', onFiles: async ([file]) => {
+      dropZone({ accept: '.docx,.xlsx,.xlsm,.doc,.xls,.pdf', label: list.length ? 'Add another school format' : 'Upload your school’s planning form', hint: 'Word (.docx) or Excel (.xlsx). Teacher’s Desk finds the blanks next to labels like Topic, Date, Objectives, and week grids of days and periods.', onFiles: async ([file]) => {
         try {
           const r = await readFormatFile(file);
           const f = { id: uid(), name: file.name.replace(/\.(docx|xlsx|xlsm)$/i, ''), added: new Date().toISOString(), ...r };
@@ -69,10 +69,10 @@ export function openFormatSetup(orig, isNew, onDone = () => {}) {
         h('span', { class: 'hint' }, f.kind === 'table' ? 'All the lessons you choose go into one document: a box per period, a row per lesson, or a row per day.' : f.type === 'xlsx' ? 'Each lesson gets its own sheet in one Excel file.' : 'Each lesson gets its own copy of the form, one after the other in one Word file.')),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: (state.settings.weeklyFormat || weeklyFormat()?.id) === f.id || (!weeklyFormat() && true), onchange: e => { f._weekly = e.target.checked; } }), 'This is my weekly planner: show it on the planner, filled in from the week on screen'),
       nothing ? h('div', { class: 'callout warn' },
-        h('p', {}, h('strong', {}, 'Klasboek couldn’t find any blanks in this form.'), ' It looks for a label (like “Topic” or “Date:”) with an empty box or line next to or under it.'),
+        h('p', {}, h('strong', {}, 'Teacher’s Desk couldn’t find any blanks in this form.'), ' It looks for a label (like “Topic” or “Date:”) with an empty box or line next to or under it.'),
         h('p', { class: 'small' }, 'You can also type tags into the Word form where things should go, then upload it again: ', h('code', {}, '{{topic}}'), ' ', h('code', {}, '{{date}}'), ' ', h('code', {}, '{{objectives}}'), ' and so on. The tag names are: ', FIELDS.filter(x => x.id && x.id !== 'blank').map(x => x.id).join(', '), '.')) : null,
       f.slots.length ? h('h3', {}, 'Blanks in the form') : null,
-      f.slots.length ? h('p', { class: 'muted small' }, 'Klasboek guessed what goes in each one. Change any that are wrong; “Leave blank” keeps it empty (for signatures, for example).') : null,
+      f.slots.length ? h('p', { class: 'muted small' }, 'Teacher’s Desk guessed what goes in each one. Change any that are wrong; “Leave blank” keeps it empty (for signatures, for example).') : null,
       f.slots.length ? h('div', { class: 'slot-list' }, ...f.slots.map(s => h('div', { class: 'slot-row' + (s.field ? '' : ' unset') },
         h('span', { class: 'slot-label' }, '“' + s.label + '”'), icon('right', 16), fieldSel(s.field, v => { s.field = v; draw(); })))) : null,
       ...(f.tables || []).map((t, i) => t.kind === 'grid' ? h('div', { class: 'slot-table' },
@@ -119,7 +119,7 @@ function lessonsIn(from, to, key) {
 export function openFormatDownload({ formatId, lesson, weekStart } = {}) {
   const list = formats();
   if (!list.length) {
-    const m = modal('School formats', h('div', {}, h('p', {}, 'Upload your school’s planning form first. Klasboek fills it in from your planning whenever you need it.'), formatsSection()), { wide: true });
+    const m = modal('School formats', h('div', {}, h('p', {}, 'Upload your school’s planning form first. Teacher’s Desk fills it in from your planning whenever you need it.'), formatsSection()), { wide: true });
     return m;
   }
   const mon = weekStart || mondayOf(lesson?.date || today());

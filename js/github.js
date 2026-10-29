@@ -74,7 +74,7 @@ export const gh = {
       if (!r._b64 || typeof r.blob !== 'string') continue;
       if (!have.has(r.id)) {
         const exists = await api(path('files/' + r.id));
-        if (!exists) await api(path('files/' + r.id), { method: 'PUT', body: { message: `Klasboek file ${r.name || r.id}`, content: b64(r.blob) } });
+        if (!exists) await api(path('files/' + r.id), { method: 'PUT', body: { message: `Teacher’s Desk file ${r.name || r.id}`, content: b64(r.blob) } });
         have.add(r.id);
       }
       r._ghFile = r.id; r.blob = null; delete r._b64;
@@ -82,7 +82,7 @@ export const gh = {
     write({ ...read(), files: [...have] });
     const text = JSON.stringify(json);
     if (text.length > 90 * 1024 * 1024) throw new Error('Your data is too big for GitHub sync (over 90 MB).');
-    const res = await api(path(MAIN), { method: 'PUT', body: { message: `Klasboek sync ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, content: b64(text), ...(prev ? { sha: prev } : {}) } });
+    const res = await api(path(MAIN), { method: 'PUT', body: { message: `Teacher’s Desk sync ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, content: b64(text), ...(prev ? { sha: prev } : {}) } });
     return res.content.sha;
   },
 };

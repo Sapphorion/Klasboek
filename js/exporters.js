@@ -69,7 +69,7 @@ async function docKit() {
   }
   async function toBlob(children, name, { landscape = false } = {}) {
     const doc = new D.Document({
-      creator: state.settings.teacherName || 'Klasboek', title: name,
+      creator: state.settings.teacherName || 'Teacher’s Desk', title: name,
       styles: { default: { document: { run: { font: FONT, size: 22 } } } },
       numbering: undefined,
       sections: [{

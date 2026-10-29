@@ -101,7 +101,7 @@ function view() {
   if (!state.stock.length) {
     page.append(h('section', { class: 'card-sec empty-stock' },
       h('h2', {}, 'Keep track of your lab stock'),
-      h('p', {}, 'Add chemicals, glassware, equipment and consumables with how much you have, where it is kept, when it was bought and when it expires. Klasboek warns you about expired chemicals and anything running low, here and on the Today page.'),
+      h('p', {}, 'Add chemicals, glassware, equipment and consumables with how much you have, where it is kept, when it was bought and when it expires. Teacher’s Desk warns you about expired chemicals and anything running low, here and on the Today page.'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn', onclick: () => editItem() }, icon('plus'), 'Add your first item'),
         h('button', { class: 'btn ghost', onclick: openImport }, icon('upload'), 'Import an Excel or CSV list'),
@@ -268,7 +268,7 @@ export function rowsToStock(rows) {
 }
 function openImport() {
   const body = h('div', {},
-    h('p', {}, 'Upload an Excel or CSV list. Klasboek looks for columns like Item, Quantity, Unit, Location, Date purchased, Expiry, Supplier and Cost. Other columns are ignored.'),
+    h('p', {}, 'Upload an Excel or CSV list. Teacher’s Desk looks for columns like Item, Quantity, Unit, Location, Date purchased, Expiry, Supplier and Cost. Other columns are ignored.'),
     dropZone({ accept: '.xlsx,.xls,.csv', label: 'Choose a stock list', hint: 'Excel or CSV', onFiles: async ([f]) => {
       try {
         await loadScript('vendor/xlsx.full.min.js');

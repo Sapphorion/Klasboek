@@ -118,7 +118,7 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
     if (raw) {
       try { return repair(unwrap(raw, tool)); }
       catch (e) {
-        if (!(e instanceof ShapeError) || shapeRetry) throw new Error('The AI sent its answer in a shape Klasboek couldn’t read. Please tap the button again; it usually works on the second try.');
+        if (!(e instanceof ShapeError) || shapeRetry) throw new Error('The AI sent its answer in a shape Teacher’s Desk couldn’t read. Please tap the button again; it usually works on the second try.');
         shapeRetry = true;
         progressFn?.('Tidying the answer…'); window.dispatchEvent(new CustomEvent('ai-progress', { detail: 'Tidying the answer…' }));
         note = `Important: when you call ${tool.name}, send every list (especially "${e.message}") as a real JSON array, not as a text string.`;
@@ -128,7 +128,7 @@ async function call({ system, content, tool, maxTokens = 8000 }) {
     if (attempt >= 1) break;
     note = `Important: give the complete result by calling the ${tool.name} tool. Do not answer in plain text.`;
   }
-  throw new Error('Claude didn’t send anything back that Klasboek could use. Please try again.');
+  throw new Error('Claude didn’t send anything back that Teacher’s Desk could use. Please try again.');
 }
 
 // Sometimes the result arrives wrapped, e.g. {"save_material": {...}} or {"input": {...}}.

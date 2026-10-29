@@ -1,4 +1,4 @@
-// Keep Klasboek the same on every device: a shared copy lives in a private GitHub repository
+// Keep Teacher’s Desk the same on every device: a shared copy lives in a private GitHub repository
 // (or OneDrive's app folder, for a registered Microsoft account). Changes upload a few seconds after you make them; other devices pick them up
 // when they open or come back into view. If two devices changed things at the same time, you choose.
 import { state, onChange, onSaved, emit, loadState } from './state.js';
@@ -12,7 +12,7 @@ const FILE = '/me/drive/special/approot:/klasboek-sync.json';
 const LS = 'klasboek.sync';
 const ALL = ['settings', 'timetable', 'subjects', 'atp', 'lessons', 'materials', 'moderations', 'events', 'notices', 'creations', 'diary', 'stock', 'attendance'];
 
-// Microsoft (OneDrive app folder), for school/work accounts with Klasboek registered.
+// Microsoft (OneDrive app folder), for school/work accounts with Teacher’s Desk registered.
 const ms = {
   name: 'OneDrive',
   ready: signedIn,

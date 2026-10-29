@@ -189,7 +189,7 @@ export function icsFor(n) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const s = subjectById(n.subjectId);
   const desc = [s ? subjectLabel(s) : '', n.level ? n.level + ' moderation' : '', ...(n.items || []).map(i => `${i.done ? '[x]' : '[ ]'} ${i.text}`), n.notes].filter(Boolean).join('\n');
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Klasboek//Moderation//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Teachers Desk//Moderation//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
     `UID:${n.id}@klasboek`, `DTSTAMP:${stamp}`, `DTSTART:${d}T070000`, `DTEND:${d}T073000`,
     `SUMMARY:${esc('Moderation due: ' + n.title)}`, `DESCRIPTION:${esc(desc)}`];
   for (const days of [...(n.remind || []), 0]) {

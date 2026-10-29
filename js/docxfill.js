@@ -1,5 +1,5 @@
 // School formats: read a school's own Word (.docx) planning form, find its blanks, and fill them
-// from Klasboek's planning. No library: a .docx is a zip of XML files.
+// from Teacher’s Desk’s planning. No library: a .docx is a zip of XML files.
 import { state, subjectById, atpById } from './state.js';
 import { fmt, termWeekOf, mondayOf, addDays, weekdayIndex, minutesBetween } from './dates.js';
 import { siyavulaFor } from './siyavula.js';
@@ -30,7 +30,7 @@ export async function readZip(bytes) {
     if (name.endsWith('/')) continue;
     if (method === 0) files.set(name, data);
     else if (method === 8) files.set(name, new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()));
-    else throw new Error('This Word file uses a packing Klasboek can’t read. Open it in Word and save it again as .docx.');
+    else throw new Error('This Word file uses a packing Teacher’s Desk can’t read. Open it in Word and save it again as .docx.');
   }
   return files;
 }
@@ -64,7 +64,7 @@ export async function writeZip(files, type = 'application/vnd.openxmlformats-off
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type });
 }
 
-// ---------- What Klasboek can fill in ----------
+// ---------- What Teacher’s Desk can fill in ----------
 // Checked in this order, so "key terms" is vocabulary (not the school term) and "sub-topic" isn't "topic".
 export const FIELDS = [
   { id: '', label: 'Leave blank' },
@@ -360,7 +360,7 @@ const textOf = el => [...el.getElementsByTagNameNS(W, 't')].map(t => t.textConte
 const cellText = tc => kids(tc, 'p').map(textOf).join('\n');
 function parseXml(xml, what = 'Word') {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  if (doc.getElementsByTagName('parsererror').length) throw new Error(`Klasboek couldn’t read the inside of that ${what} file.`);
+  if (doc.getElementsByTagName('parsererror').length) throw new Error(`Teacher’s Desk couldn’t read the inside of that ${what} file.`);
   return doc;
 }
 const bodyOf = doc => doc.getElementsByTagNameNS(W, 'body')[0];
@@ -532,7 +532,7 @@ function sheetGrid(doc, ss) {
 }
 function analyseXlsx(files) {
   const { sheets, ss } = xlsxParts(files);
-  if (!sheets.length) throw new Error('That Excel file has no sheets Klasboek can read.');
+  if (!sheets.length) throw new Error('That Excel file has no sheets Teacher’s Desk can read.');
   const grids = sheets.map(s => sheetGrid(parseXml(dec(files.get(s.path)), 'Excel'), ss));
   const r = analyseTables(grids);
   r.slots.push(...tagSlots(grids.flat(2).filter(x => typeof x === 'string').join('\n')));
