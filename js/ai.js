@@ -2,8 +2,6 @@
 // server (with accounts and billing) by changing only this file.
 import { state } from './state.js';
 import { isUni, uniPrompt, UNI_NOTE } from './edition.js';
-import { inSkoolHuis } from './embed.js';
-import { schoolAi, schoolAiFetch, refreshSchoolAi } from './school.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 
@@ -13,18 +11,10 @@ export const MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — most thorough' },
 ];
 
-// Inside Skool Huis the school provides the AI (no key needed); everywhere else the teacher's own key is used.
-export const aiReady = () => inSkoolHuis
-  ? !!(state.settings.aiEnabled && schoolAi()?.enabled && navigator.onLine)
-  : !!(state.settings.aiEnabled && state.settings.apiKey && navigator.onLine);
+// AI uses the teacher's own Claude API key.
+export const aiReady = () => !!(state.settings.aiEnabled && state.settings.apiKey && navigator.onLine);
 export function aiUnavailableReason() {
   if (!state.settings.aiEnabled) return 'AI is switched off in Settings.';
-  if (inSkoolHuis) {
-    if (!navigator.onLine) return 'You are offline. AI needs internet; templates still work.';
-    if (!schoolAi()) return 'Checking your school’s AI… try again in a moment.';
-    if (!schoolAi().enabled) return 'Your school hasn’t switched on AI for teachers yet. Ask the office.';
-    return '';
-  }
   if (!state.settings.apiKey) return 'Add your Claude API key in Settings to use AI.';
   if (!navigator.onLine) return 'You are offline. AI needs internet; templates still work.';
   return '';
@@ -144,7 +134,6 @@ function unwrap(x, tool) {
 }
 
 async function post({ system, messages, tool, maxTokens }) {
-  if (inSkoolHuis) return postViaSchool({ system, messages, tool, maxTokens });
   let res;
   try {
     res = await fetch(API, {
@@ -181,32 +170,6 @@ async function post({ system, messages, tool, maxTokens }) {
   const type = res.headers.get('content-type') || '';
   if (!type.includes('event-stream') || !res.body) return res.json(); // (proxies or tests that answer in one go)
   return readStream(res.body);
-}
-
-// Inside Skool Huis: the same request, sent through the school's AI. Its messages
-// (budget used up, AI not switched on) come from Skool Huis and are shown as they are.
-async function postViaSchool({ system, messages, tool, maxTokens }) {
-  const res = await schoolAiFetch({
-    model: state.settings.model || MODELS[0].id,
-    max_tokens: maxTokens,
-    system,
-    messages,
-    tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }],
-    tool_choice: { type: 'auto' },
-    stream: true,
-  });
-  if (!res.ok) {
-    let msg = `Your school’s AI answered ${res.status}.`;
-    try { const j = await res.json(); msg = j.error?.message || msg; } catch {}
-    if (res.status === 429) msg = 'Rate limit reached. Wait a minute and try again.';
-    if (res.status === 529) msg = 'Claude is busy right now. Try again in a minute.';
-    if (res.status === 402 || res.status === 403) refreshSchoolAi();
-    throw new Error(msg);
-  }
-  const type = res.headers.get('content-type') || '';
-  const out = !type.includes('event-stream') || !res.body ? await res.json() : await readStream(res.body);
-  refreshSchoolAi();
-  return out;
 }
 
 // Server-sent events → the same shape as a normal (non-streamed) reply.

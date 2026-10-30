@@ -1,6 +1,6 @@
 // Offline support: every app file is cached on install, so Teacher’s Desk opens with no internet.
 // Bump VERSION whenever you change any file so teachers get the update.
-const VERSION = 'klasboek-v60';
+const VERSION = 'klasboek-v61';
 const FILES = [
   './',
   './fonts/atkinson-hyperlegible-latin-400-italic.woff2',
@@ -17,7 +17,6 @@ const FILES = [
   './js/aicheck.js',
   './js/app.js',
   './js/config.js',
-  './js/school.js',
   './js/create/bloom.js', './js/create/askfirst.js',
   './js/create/covers.js',
   './js/create/export.js',
@@ -28,7 +27,6 @@ const FILES = [
   './js/db.js',
   './js/docxfill.js',
   './js/edition.js',
-  './js/embed.js',
   './js/events.js',
   './js/exporters.js',
   './js/fbauth.js',
@@ -68,7 +66,6 @@ const FILES = [
   './js/views/progress.js',
   './js/views/settings.js',
   './js/views/stock.js',
-  './js/views/schoolui.js',
   './js/views/subjects.js',
   './js/views/tellbox.js',
   './js/views/termplan.js',

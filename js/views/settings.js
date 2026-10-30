@@ -1,5 +1,4 @@
 import { state, onChange, saveSettings, DEFAULT_TERMS, loadState, emit } from '../state.js';
-import { schoolSection } from './schoolui.js';
 import { openInstall } from './install.js';
 import { accountSection } from './account.js';
 import { yearsSection } from './yearui.js';
@@ -7,8 +6,6 @@ import { formatsSection } from './formats.js';
 import { displaySection, lookSection } from './display.js';
 import { h, icon, toast, busy, download, confirmBox } from '../ui.js';
 import { MODELS, testKey } from '../ai.js';
-import { inSkoolHuis } from '../embed.js';
-import { schoolAi } from '../school.js';
 import { exportBackup, importBackup } from '../db.js';
 import { termWeeks } from '../dates.js';
 
@@ -35,10 +32,9 @@ function view() {
   page.append(lookSection());
   page.append(displaySection());
   page.append(accountSection());
-  if (state.settings.edition !== 'uni') page.append(schoolSection());
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'You and your school'), h('p', { class: 'muted small' }, 'Shown on every lesson plan, worksheet, slide deck and report.'),
     h('div', { class: 'form-grid' },
-      field('Teacher’s Desk is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation' + (inSkoolHuis ? '' : ' and lab stock') + '.'); } },
+      field('Teacher’s Desk is for', h('select', { onchange: async e => { await saveSettings({ edition: e.target.value, home: e.target.value === 'uni' ? 'planner' : s.home }); window.dispatchEvent(new Event('klasboek-edition')); toast(e.target.value === 'uni' ? 'University lecturer: modules, lectures, students and Attendance.' : 'School teacher: ATPs, grades, moderation and lab stock.'); } },
         h('option', { value: 'school', selected: s.edition !== 'uni' }, 'A school teacher'), h('option', { value: 'uni', selected: s.edition === 'uni' }, 'A university lecturer')), 'Changes the menu and the words used. Your work stays as it is.'),
       field('Your name', h('input', { value: s.teacherName, placeholder: 'e.g. Mr S. Botha', onchange: e => saveSettings({ teacherName: e.target.value.trim() }) })),
       field('School', h('input', { value: s.school, placeholder: 'e.g. Walmer High School', onchange: e => saveSettings({ school: e.target.value.trim() }) })),
@@ -87,20 +83,6 @@ function view() {
   const keyIn = h('input', { type: 'password', value: s.apiKey, placeholder: 'sk-ant-…', autocomplete: 'off', onchange: e => saveSettings({ apiKey: e.target.value.trim() }) });
   const testBtn = h('button', { class: 'btn ghost sm' }, 'Test the key');
   testBtn.onclick = async () => { await saveSettings({ apiKey: keyIn.value.trim() }); const done = busy(testBtn, 'Testing…'); try { const r = await testKey(); toast('Key works: ' + r); } catch (e) { toast(e.message, 'error'); } finally { done(); } };
-  if (inSkoolHuis) {
-    // Inside Skool Huis the school provides the AI: no key, the school's models only.
-    const ai = schoolAi();
-    const allowed = MODELS.filter(m => !ai?.models?.length || ai.models.includes(m.id));
-    const rand = n => 'R' + Number(n || 0).toFixed(2);
-    page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'AI writing (Claude)'),
-      h('p', { class: 'muted small' }, 'AI writes full lesson plans, slides and worksheets with memos, and reads hard-to-parse ATPs and timetable photos. ',
-        ai?.enabled ? 'Your school pays for it, so you don’t need an API key. ' : 'Your school hasn’t switched it on yet; ask the office. ', 'Without it, templates still work offline.'),
-      ai?.enabled ? h('p', {}, `This month you’ve used ${rand(ai.used_zar)}${ai.cap_zar ? ` of your ${rand(ai.cap_zar)}` : ''}.`, ai.school_left ? '' : ' The school’s budget for this month is used up.') : null,
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.createAsk !== false, onchange: e => saveSettings({ createAsk: e.target.checked }) }), 'In Create, ask me a few questions (with answers to tick) before writing'),
-      h('div', { class: 'form-grid' },
-        field('Model', h('select', { onchange: e => saveSettings({ model: e.target.value }) }, allowed.map(m => h('option', { value: m.id, selected: m.id === s.model }, m.label)))))));
-  } else
   page.append(h('section', { class: 'card-sec' }, h('h2', {}, 'AI writing (Claude)'),
     h('p', { class: 'muted small' }, 'AI writes full lesson plans, slides and worksheets with memos, and reads hard-to-parse ATPs and timetable photos. It needs internet and a Claude API key from console.anthropic.com (you pay per use). Without it, templates still work offline.'),
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.aiEnabled, onchange: e => saveSettings({ aiEnabled: e.target.checked }) }), 'Use AI when online'),

@@ -5,17 +5,9 @@ import { syncNow, syncInfo, onSync, autoSync, setAutoSync, resetSyncState } from
 import { ghConnect, ghConnected, ghInfo, ghDisconnect } from '../github.js';
 import { fbConfigured, fbUser, onAuth, setLocalConfig, firebaseConfig } from '../fbauth.js';
 import { signInFlow, signOutFlow } from '../signin.js';
-import { inSkoolHuis, embeddedUser } from '../embed.js';
 
 export function accountSection() {
   const sec = h('section', { class: 'card-sec account-sec' });
-  if (inSkoolHuis) {
-    // Opened from Skool Huis: the Skool Huis sign-in is the account. No Google, Microsoft or GitHub here.
-    sec.append(h('h2', {}, 'Your account'),
-      h('p', {}, 'You’re signed in with your Skool Huis account', embeddedUser?.email ? h('span', {}, ' (', h('strong', {}, embeddedUser.email), ')') : null, '. Your planner is kept in this browser, separate for each staff member, so colleagues on this computer don’t see it.'),
-      h('p', { class: 'muted small' }, 'Download a backup under Backup below now and then, and before clearing the browser. Restore it to carry on at another computer.'));
-    return sec;
-  }
   const draw = () => {
     const s = syncInfo();
     const kids = [h('h2', {}, 'Your account')];

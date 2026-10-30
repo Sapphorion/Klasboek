@@ -11,7 +11,6 @@ import { openWeeklyPlanner } from './formats.js';
 import { isUni } from '../edition.js';
 import { dueText } from './notices.js';
 import { stockAlerts } from './stock.js';
-import { inSkoolHuis } from '../embed.js';
 import { progressFor, classesOf } from './progress.js';
 
 let rootEl = null;
@@ -126,7 +125,7 @@ function attentionBox(t, day, tw, school) {
   if (school) {
     for (const n of noticesDueSoon(14)) items.push({ urgent: n.due && n.due <= addDays(t, 3), node: h('span', {}, h('a', { href: '#moderation' }, n.title), ' ', h('span', { class: 'muted small' }, dueText(n))) });
     const al = stockAlerts();
-    if (state.stock.length && !inSkoolHuis) {
+    if (state.stock.length) {
       if (al.expired.length) items.push({ urgent: true, node: h('a', { href: '#stock' }, `${al.expired.length} lab ${al.expired.length === 1 ? 'item has' : 'items have'} expired: ${al.expired.slice(0, 3).map(x => x.name).join(', ')}`) });
       const low = al.low.filter(x => !al.expired.includes(x));
       if (low.length) items.push({ node: h('a', { href: '#stock' }, `${low.length} lab ${low.length === 1 ? 'item is' : 'items are'} low or out: ${low.slice(0, 3).map(x => x.name).join(', ')}`) });

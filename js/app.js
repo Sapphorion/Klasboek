@@ -1,4 +1,3 @@
-import { inSkoolHuis, skoolHuisHome } from './embed.js';
 import { loadState, onChange, state, saveSettings } from './state.js';
 import { h, icon, toast } from './ui.js';
 import { renderPlanner } from './views/planner.js';
@@ -24,7 +23,6 @@ import { currentTheme, setLook } from './views/display.js';
 import { openInstall, isInstalled, onInstallChange } from './views/install.js';
 import { handleRedirect, renewIfNeeded, signedIn, account } from './msauth.js';
 import { startSync, onSync, syncInfo, connected } from './sync.js';
-import { pullIfDue, linkToSkoolHuis, refreshSchoolAi } from './school.js';
 
 const ROUTES = [
   { id: 'today', only: 'school', label: 'Today', short: 'Today', icon: 'home', render: renderToday },
@@ -35,8 +33,7 @@ const ROUTES = [
   { id: 'subjects', label: 'Subjects & ATPs', short: 'Subjects', icon: 'book', render: renderSubjects },
   { id: 'timetable', label: 'Timetable', short: 'Timetable', icon: 'grid', render: renderTimetable },
   { id: 'moderation', only: 'school', label: 'Moderation', short: 'Moderate', icon: 'check', render: renderModeration },
-  // Lab stock is for a teacher's own Teacher’s Desk; inside Skool Huis each classroom's inventory is kept in Skool Huis itself.
-  { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock, standalone: true },
+  { id: 'stock', only: 'school', label: 'Lab stock', short: 'Stock', icon: 'flask', render: renderStock },
   { id: 'progress', only: 'school', label: 'Term progress', short: 'Progress', icon: 'chart', render: renderProgress, hidden: true },
   { id: 'materials', only: 'school', label: 'Materials', short: 'Files', icon: 'folder', render: renderMaterials },
   { id: 'attendance', label: 'Attendance', short: 'Attend', icon: 'people', render: renderAttendance, only: 'uni' },
@@ -48,7 +45,7 @@ let current = null, cleanup = null;
 
 function route() {
   const [id, ...rest] = (location.hash.slice(1) || state.settings.home || 'today').split('/');
-  const r = ROUTES.find(r => r.id === id && (!r.only || r.only === edition()) && !(r.standalone && inSkoolHuis)) || ROUTES.find(r => r.id === 'planner');
+  const r = ROUTES.find(r => r.id === id && (!r.only || r.only === edition())) || ROUTES.find(r => r.id === 'planner');
   document.querySelectorAll('#nav a').forEach(a => a.setAttribute('aria-current', a.dataset.id === r.id ? 'page' : 'false'));
   document.querySelectorAll('dialog.modal[open] > header .icon-btn').forEach(b => b.click()); // leaving the page closes pop-ups
   if (cleanup) { cleanup(); cleanup = null; }
@@ -66,11 +63,9 @@ function buildNav() {
   const ul = document.getElementById('nav');
   ul.replaceChildren();
   for (const r of ROUTES) {
-    if (r.hidden || (r.only && r.only !== edition()) || (r.standalone && inSkoolHuis)) continue;
+    if (r.hidden || (r.only && r.only !== edition())) continue;
     ul.append(h('li', {}, h('a', { href: '#' + r.id, 'data-id': r.id, 'aria-label': r.label }, icon(r.icon, 20), h('span', { class: 'long' }, r.label), h('span', { class: 'short', 'aria-hidden': 'true' }, r.short))));
   }
-  // Inside Skool Huis: a way back to the school's app.
-  if (inSkoolHuis) ul.append(h('li', { class: 'to-skoolhuis' }, h('a', { href: skoolHuisHome(), 'aria-label': 'Back to Skool Huis' }, icon('left', 20), h('span', { class: 'long' }, 'Skool Huis'), h('span', { class: 'short', 'aria-hidden': 'true' }, 'Skool Huis'))));
 }
 
 function netStatus() {
@@ -141,7 +136,7 @@ async function start() {
   route();
   // A link like …/Klasboek/?for=lecturer opens straight in the lecturer edition.
   const forWho = new URLSearchParams(location.search).get('for') || '';
-  const preset = inSkoolHuis ? 'school' : /^(uni|lecturer|university)$/i.test(forWho) ? 'uni' : /^(school|teacher)$/i.test(forWho) ? 'school' : '';
+  const preset = /^(uni|lecturer|university)$/i.test(forWho) ? 'uni' : /^(school|teacher)$/i.test(forWho) ? 'school' : '';
   if (needsWelcome()) openWelcome(() => route(), { edition: preset });
   else if (!state.settings.edition) saveSettings({ edition: 'school' });
   // Signed in with Google before? Pick the session up again (needs internet the first time each visit).
@@ -150,11 +145,8 @@ async function start() {
     navigator.onLine ? go() : window.addEventListener('online', go, { once: true });
   }
   syncBadge(); onSync(syncBadge); onAuth(syncBadge); window.addEventListener('klasboek-sync', syncBadge);
-  // Connected to the school's Skool Huis? Bring in the term dates and school calendar every few hours.
-  const schoolPull = () => { if (!isUni()) linkToSkoolHuis().catch(() => null).then(() => { refreshSchoolAi(); return pullIfDue(); }).then(r => { if (r?.events || r?.terms) toast(`School calendar updated${r.terms ? ', with new term dates' : ''}.`); }); };
-  schoolPull();
-  window.addEventListener('online', schoolPull);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) schoolPull(); });
+  // The Skool Huis link was removed: forget any old school sign-in on this device.
+  try { localStorage.removeItem('klasboek.school.v1'); } catch {}
   if (connected()) startSync(); else window.addEventListener('klasboek-connected', () => startSync());
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // When a new version takes over, reload once so the teacher sees it straight away.
